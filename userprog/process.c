@@ -23,7 +23,7 @@
 #include "lib/log.h"
 
 static thread_func start_process NO_RETURN;
-static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static bool load (const char *filename, int cmdline_len, char *args[], int argc, void (**eip) (void), void **esp);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -69,7 +69,16 @@ start_process (void *file_name_)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+
+  int cmdline_len = strlen(file_name); // total length; assuming file_name includes the newline character
+  char *args[PGSIZE];
+  int argc = 0;
+  char *saveptr;
+  args[argc++] = strtok_r(file_name, " \t\n", &saveptr);
+  while (args[argc] = strtok_r(NULL, " \t\n", &saveptr) != NULL)  argc++;  // this way, terminated with NULL
+
+
+  success = load (file_name, cmdline_len, args, argc, &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
@@ -205,7 +214,7 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (void **esp);
+static bool setup_stack (void **esp, char *file_name, int cmdline_len, char *args[], int argc);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -216,7 +225,7 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
 bool
-load (const char *file_name, void (**eip) (void), void **esp)
+load (const char *file_name, int cmdline_len, char *args[], int argc, void (**eip) (void), void **esp)
 {
   struct thread *t = thread_current ();
   struct Elf32_Ehdr ehdr;
@@ -312,7 +321,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
-  if (!setup_stack (esp))
+  if (!setup_stack (esp, file_name, cmdline_len, args, argc))
     goto done;
 
   /* Start address. */
@@ -437,7 +446,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp)
+setup_stack (void **esp, char *file_name, int cmdline_len, char *args[], int argc)
 {
   uint8_t *kpage;
   bool success = false;
@@ -446,8 +455,37 @@ setup_stack (void **esp)
   if (kpage != NULL)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
-        *esp = PHYS_BASE;
+      if (success) {
+         *esp = PHYS_BASE;
+         // first, push the arguments character by character
+         for (int i=argc-1; i>=0; i--) {
+            for (int j=strlen(args[i]); j>=0; j--) {
+               *esp -= sizeof(char);
+               *(char *)esp = args[i][j];
+            }
+            args[i] = (char *) *esp; // the pointer to that argument now point to where the argument resides in the stack
+         }
+         // now try to word align it and pad zero
+         while ((uint32_t)(*esp) % 4 != 0) {
+            *esp -= sizeof(uint8_t);
+            *(uint8_t *)esp = (uint8_t)0;
+         }
+         // now push the arguemnt pointers to the stack, including the NULL terminator
+         for (int i=argc; i>=0; i--) {
+            *esp -= sizeof(char *);
+            *(char *)esp = args[i];
+         }
+         args = (char **) *esp;   // point the args char** to where the pointer to first string resides in the stack
+         // now push the args itself
+         *esp -= sizeof(char **);
+         *(uint32_t *)esp = (uint32_t) args; // this is not ideal, but how to cast so that the content of that location is char **?
+         // now push argc
+         *esp -= sizeof(int);  // a word
+         *(int *)esp = argc;
+         // now push the dummy return address
+         *esp -= sizeof (void (*) (void)); // should be 4
+         *(int *)esp = 0;
+      }
       else
         palloc_free_page (kpage);
     }
@@ -473,3 +511,4 @@ install_page (void *upage, void *kpage, bool writable)
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
 }
+
