@@ -4,5 +4,8 @@ TAGS
 tags
 *.o
 *.a
+pintos
+Pintos.pm
+pintos-gdb
 *~
 .DS_Store

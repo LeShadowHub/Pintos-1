@@ -254,7 +254,7 @@ thread_name (void)
    See the big comment at the top of thread.h for details. */
 struct thread *
 thread_current (void)
-{
+   {
   struct thread *t = running_thread ();
 
   /* Make sure T is really a thread.
@@ -457,10 +457,10 @@ init_thread (struct thread *t, const char *name, int priority)
   ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
   ASSERT (name != NULL);
 
-  memset (t, 0, sizeof *t);
+  memset (t, 0, sizeof *t); // initialize every byte to 0
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
-  t->stack = (uint8_t *) t + PGSIZE;
+  t->stack = (uint8_t *) t + PGSIZE; // stack starts at the top of the page allocated to this thread
   t->priority = priority;
   t->magic = THREAD_MAGIC;
 
