@@ -12,30 +12,26 @@ static void user_mem_read(void *dest, void *uaddr, size_t size);
 
 static void sys_halt (void);
 static void sys_exit (int status);
-/*
-static pid_t sys_exec (const char *file);
-static int sys_wait (pid_t);
-static bool sys_create (const char *file, unsigned initial_size);
-static bool sys_remove (const char *file);
-static int sys_open (const char *file);
-static int sys_filesize (int fd);
-static int sys_read (int fd, void *buffer, unsigned length);
-static int sys_write (int fd, const void *buffer, unsigned length);
-static void sys_seek (int fd, unsigned position);
-static unsigned sys_tell (int fd);
-static void sys_close (int fd);
-*/
+
+// static pid_t sys_exec (const char *file);
+// static int sys_wait (pid_t);
+// static bool sys_create (const char *file, unsigned initial_size);
+// static bool sys_remove (const char *file);
+// static int sys_open (const char *file);
+// static int sys_filesize (int fd);
+// static int sys_read (int fd, void *buffer, unsigned length);
+static int sys_write (int fd, const void *buffer, unsigned size);
+// static void sys_seek (int fd, unsigned position);
+// static unsigned sys_tell (int fd);
+// static void sys_close (int fd);
+
 void syscall_init (void) {
    intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
 static void syscall_handler (struct intr_frame *f UNUSED) {
    void *sp = f->esp; // copy of stack pointer, don't want to modify the pointer
-   // first arg is the return address
-   // void *return_addr;
-   // user_mem_read(&return_addr, sp, sizeof(return_addr));
-   // sp = (void **) sp + 1;
-
+   // extract syscall number
    int syscall_num;
    user_mem_read(&syscall_num, sp, sizeof(syscall_num));
    sp = (int *) sp + 1;
@@ -75,7 +71,16 @@ static void syscall_handler (struct intr_frame *f UNUSED) {
       }
 
       case SYS_WRITE: {
-
+         int fd;
+         user_mem_read(&fd, sp, sizeof(fd));
+         sp = (int *) sp + 1;
+         void *buffer;
+         user_mem_read(&buffer, sp, sizeof(buffer));
+         sp = (void **) sp + 1;
+         unsigned size;
+         user_mem_read(&size, sp, sizeof(size));
+         sp = (unsigned *) sp + 1;
+         sys_write(fd, buffer, size);
       }
       case SYS_SEEK: {
 
@@ -89,9 +94,6 @@ static void syscall_handler (struct intr_frame *f UNUSED) {
 
    }
 
-   //printf ("system call!\n");
-
-   thread_exit ();
 }
 
 static int get_user (const uint8_t *uaddr);
@@ -198,9 +200,20 @@ Runs the executable whose name is given in cmd_line, passing any given arguments
 //
 // }
 //
-// int write (int fd, const void *buffer, unsigned length) {
-//
-// }
+/*
+Writes size bytes from buffer to the open file fd. Returns the number of bytes actually written, which may be less than size if some bytes could not be written.
+Writing past end-of-file would normally extend the file, but file growth is not implemented by the basic file system. The expected behavior is to write as many bytes as possible up to end-of-file and return the actual number written, or 0 if no bytes could be written at all.
+
+Fd 1 writes to the console. Your code to write to the console should write all of buffer in one call to putbuf(), at least as long as size is not bigger than a few hundred bytes. (It is reasonable to break up larger buffers.) Otherwise, lines of text output by different processes may end up interleaved on the console, confusing both human readers and our grading scripts.
+*/
+int sys_write (int fd, const void *buffer, unsigned size) {
+   // writing to the console
+   if (fd == 1)
+   {
+      putbuf (buffer, size);
+      return size;
+   }
+}
 //
 // void seek (int fd, unsigned position) {
 //
