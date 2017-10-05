@@ -31,9 +31,14 @@ void syscall_init (void) {
 
 static void syscall_handler (struct intr_frame *f UNUSED) {
    void *sp = f->esp; // copy of stack pointer, don't want to modify the pointer
+   // first arg is the return address
+   // void *return_addr;
+   // user_mem_read(&return_addr, sp, sizeof(return_addr));
+   // sp = (void **) sp + 1;
+
    int syscall_num;
    user_mem_read(&syscall_num, sp, sizeof(syscall_num));
-
+   sp = (int *) sp + 1;
 
    switch (syscall_num) {
       case SYS_HALT: {
@@ -41,7 +46,6 @@ static void syscall_handler (struct intr_frame *f UNUSED) {
          break;
       }
       case SYS_EXIT: {
-         sp = (uint32_t *) sp + 1;
          int status;
          user_mem_read(&status, sp, sizeof(status));
          sys_exit(status);
@@ -106,7 +110,7 @@ static void user_mem_read(void *dest, void *uaddr, size_t size) {
       int val = get_user(uaddr + i);
       if (val == -1)
          invalid_user_access();
-      *(uint8_t *)(dest + i) = val && 0xFF;
+      *(uint8_t *)(dest + i) = val & 0xFF;
    }
 }
 
