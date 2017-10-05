@@ -202,9 +202,9 @@ static pid_t sys_exec (const char *file) {
  *           must return -1.
  * Description: Waits for a child process pid and retrieves the child's exit status.
  */
-int wait (pid_t) {
-   return 0;
-}
+// int wait (pid_t) {
+//    return 0;
+// }
 
 /*
  * System Call: bool create (const char* file, unsigned initial_size)
@@ -214,9 +214,9 @@ int wait (pid_t) {
  *     - Return: true if successful, false otherwise.
  * Description: creates a new file called file initially initial_size bytes in size.
  */
-bool create (const char *file, unsigned initial_size) {
-   return 0;
-}
+// bool create (const char *file, unsigned initial_size) {
+//    return 0;
+// }
 
 /*
  * System Call: bool remove (const char* file)
@@ -226,9 +226,9 @@ bool create (const char *file, unsigned initial_size) {
  * Description: deletes the file called file. A file may be removed regardless of whether
  *     it is open or closed, and removing an open file does not close it.
  */
-bool remove (const char *file) {
-   return 0;
-}
+// bool remove (const char *file) {
+//    return 0;
+// }
 
 /*
  * System Call: int open (const char *file)
@@ -238,9 +238,9 @@ bool remove (const char *file) {
  *           or -1 if the file could not be opened.
  * Description: opens the file called file.
  */
-int open (const char *file) {
-   return 0;
-}
+// int open (const char *file) {
+//    return 0;
+// }
 
 /*
  * System Call: int filesize (int fd)
@@ -249,9 +249,9 @@ int open (const char *file) {
  *     - Return: size of file in bytes.
  * Description: returns the size, in bytes, of the file open as fd.
  */
-int filesize (int fd) {
-   return 0;
-}
+// int filesize (int fd) {
+//    return 0;
+// }
 
 /*
  * System Call: int read (int fd, void *buffer, unsigned size)
@@ -264,9 +264,9 @@ int filesize (int fd) {
  * Description: reads size bytes from the file open as fd into buffer. Fd 0 reads from
  *     the keyboard using input_getc().
  */
-int read (int fd, void *buffer, unsigned length) {
-   return 0;
-}
+// int read (int fd, void *buffer, unsigned length) {
+//    return 0;
+// }
 
 /*
  * System Call: int write (int fd, const void* buffer, unsigned size)
@@ -297,9 +297,9 @@ int sys_write (int fd, const void *buffer, unsigned size) {
  * Description: changes the next byte to be read or written in open file fd to position, expressed
  *     in bytes from the beginning of the file. (Thus, a position of 0 is the file's start.)
  */
-void seek (int fd, unsigned position) {
+// void seek (int fd, unsigned position) {
 
-}
+// }
 
 /*
  * System Call: unsigned tell (int fd)
@@ -309,16 +309,16 @@ void seek (int fd, unsigned position) {
  * Description: returns the position of the next byte to be read or written in open file fd, expressed
  *     in bytes from the beginning of the file.
  */
-unsigned tell (int fd) {
-  return 0;
-}
+// unsigned tell (int fd) {
+//   return 0;
+// }
 
 /*
  * System Call: void close (int fd)
  *     - Parameters: file descriptor to be closed.
  * Description: closes file descriptor fd.
  */
-void close (int fd) {
+// void close (int fd) {
    
-}
+// }
 
