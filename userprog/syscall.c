@@ -30,69 +30,95 @@ void syscall_init (void) {
 }
 
 static void syscall_handler (struct intr_frame *f UNUSED) {
-   void *sp = f->esp; // copy of stack pointer, don't want to modify the pointer
-   // extract syscall number
-   int syscall_num;
-   user_mem_read(&syscall_num, sp, sizeof(syscall_num));
-   sp = (int *) sp + 1;
-
-   switch (syscall_num) {
-      case SYS_HALT: {
-         sys_halt();
-         break;
-      }
-      case SYS_EXIT: {
-         int status;
-         user_mem_read(&status, sp, sizeof(status));
-         sys_exit(status);
-         break;
-      }
-
-      case SYS_EXEC: {
-
-      }
-      case SYS_WAIT: {
-
-      }
-      case SYS_CREATE: {
-
-      }
-      case SYS_REMOVE: {
-
-      }
-      case SYS_OPEN: {
-
-      }
-      case SYS_FILESIZE: {
-
-      }
-      case SYS_READ: {
-
-      }
-
-      case SYS_WRITE: {
-         int fd;
-         user_mem_read(&fd, sp, sizeof(fd));
-         sp = (int *) sp + 1;
-         void *buffer;
-         user_mem_read(&buffer, sp, sizeof(buffer));
-         sp = (void **) sp + 1;
-         unsigned size;
-         user_mem_read(&size, sp, sizeof(size));
-         sp = (unsigned *) sp + 1;
-         sys_write(fd, buffer, size);
-      }
-      case SYS_SEEK: {
-
-      }
-      case SYS_TELL: {
-
-      }
-      case SYS_CLOSE: {
-
-      }
-
-   }
+    // copy the stack pointer, don't want to modify the pointer
+    void *sp = f->esp;
+    // extract syscall number
+    int syscall_num;
+    user_mem_read(&syscall_num, sp, sizeof(syscall_num));
+    sp = (int *) sp + 1;
+    
+    switch (syscall_num) {
+        /* Halt the operating system. */
+        case SYS_HALT:
+            sys_halt();
+            break;
+        /* Terminate this process. */
+        case SYS_EXIT:
+            int status;
+            user_mem_read(&status, sp, sizeof(status));
+            sys_exit(status);
+            break;
+        /* Start another process. */
+        case SYS_EXEC:
+            break;
+        /* Wait for a child process to die. */
+        case SYS_WAIT:
+            break;
+        /* Create a file. */
+        case SYS_CREATE:
+            break;
+        /* Delete a file. */
+        case SYS_REMOVE:
+            break;
+        /* Open a file. */
+        case SYS_OPEN:
+            break;
+        /* Obtain a file's size. */
+        case SYS_FILESIZE:
+            break;
+        /* Read from a file. */
+        case SYS_READ:
+            break;
+        /* Write to a file. */
+        case SYS_WRITE:
+            int fd;
+            user_mem_read(&fd, sp, sizeof(fd));
+            sp = (int *) sp + 1;
+            void *buffer;
+            user_mem_read(&buffer, sp, sizeof(buffer));
+            sp = (void **) sp + 1;
+            unsigned size;
+            user_mem_read(&size, sp, sizeof(size));
+            sp = (unsigned *) sp + 1;
+            sys_write(fd, buffer, size);
+            break;
+        /* Change position in a file. */
+        case SYS_SEEK:
+            break;
+        /* Report current position in a file. */
+        case SYS_TELL:
+            break;
+        /* Close a file. */
+        case SYS_CLOSE:
+            break;
+            
+            
+            
+        /* Map a file into memory. */
+        case SYS_MMAP:
+            break;
+        /* Remove a memory mapping. */
+        case SYS_MUNMAP:
+            break;
+            
+            
+            
+        /* Change the current directory. */
+        case SYS_CHDIR:
+            break;
+        /* Create a directory. */
+        case SYS_MKDIR:
+            break;
+        /* Reads a directory entry. */
+        case SYS_READDIR:
+            break;
+        /* Tests if a fd represents a directory. */
+        case SYS_ISDIR:
+            break;
+        /* Returns the inode number for a fd. */
+        case SYS_INUMBER:
+            break;
+    }
 
 }
 
