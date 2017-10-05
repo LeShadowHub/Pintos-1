@@ -190,7 +190,7 @@ static void sys_exit (int status) {
  *     You must use appropriate synchronization to ensure this.
  */
 static pid_t sys_exec (const char *file) {
-
+   return 0;
 }
 
 /*
@@ -203,7 +203,7 @@ static pid_t sys_exec (const char *file) {
  * Description: Waits for a child process pid and retrieves the child's exit status.
  */
 int wait (pid_t) {
-
+   return 0;
 }
 
 /*
@@ -215,7 +215,7 @@ int wait (pid_t) {
  * Description: creates a new file called file initially initial_size bytes in size.
  */
 bool create (const char *file, unsigned initial_size) {
-
+   return 0;
 }
 
 /*
@@ -227,7 +227,7 @@ bool create (const char *file, unsigned initial_size) {
  *     it is open or closed, and removing an open file does not close it.
  */
 bool remove (const char *file) {
-
+   return 0;
 }
 
 /*
@@ -239,7 +239,7 @@ bool remove (const char *file) {
  * Description: opens the file called file.
  */
 int open (const char *file) {
-
+   return 0;
 }
 
 /*
@@ -250,7 +250,7 @@ int open (const char *file) {
  * Description: returns the size, in bytes, of the file open as fd.
  */
 int filesize (int fd) {
-
+   return 0;
 }
 
 /*
@@ -265,7 +265,7 @@ int filesize (int fd) {
  *     the keyboard using input_getc().
  */
 int read (int fd, void *buffer, unsigned length) {
-
+   return 0;
 }
 
 /*
@@ -310,7 +310,7 @@ void seek (int fd, unsigned position) {
  *     in bytes from the beginning of the file.
  */
 unsigned tell (int fd) {
-  
+  return 0;
 }
 
 /*
