@@ -153,15 +153,23 @@ static void invalid_user_access() {
 
 /************************ System Call Implementation *************************/
 /*
-Terminates Pintos by calling shutdown_power_off() (declared in threads/init.h). This should be seldom used, because you lose some information about possible deadlock situations, etc.
-*/
+ * System Call: void halt (void)
+ * Description: terminates Pintos by calling shutdown_power_off() 
+ *     (declared in threads/init.h). This should be seldom used, 
+ *     because you lose some information about possible deadlock 
+ *     situations, etc.
+ */
 static void sys_halt (void) {
    shutdown_power_off();
 }
 
 /*
-Terminates the current user program, returning status to the kernel. If the process's parent waits for it (see below), this is the status that will be returned. Conventionally, a status of 0 indicates success and nonzero values indicate errors.
-*/
+ * System Call: void exit (int status)
+ * Discription: terminates the current user program, returning status 
+ *     to the kernel. If the process's parent waits for it (see below), 
+ *     this is the status that will be returned. Conventionally, a status 
+ *     of 0 indicates success and nonzero values indicate errors.
+ */
 static void sys_exit (int status) {
    struct thread *cur = thread_current();
    printf("%s: exit(%d)\n", cur->name, status);
@@ -170,42 +178,108 @@ static void sys_exit (int status) {
 }
 
 /*
-Runs the executable whose name is given in cmd_line, passing any given arguments, and returns the new process's program id (pid). Must return pid -1, which otherwise should not be a valid pid, if the program cannot load or run for any reason. Thus, the parent process cannot return from the exec until it knows whether the child process successfully loaded its executable. You must use appropriate synchronization to ensure this.
-*/
-// static pid_t sys_exec (const char *file) {
-//
-// }
+ * System Call: pid_t exec (const char* command)
+ *     - Parameters:
+ *         - command: command to be excuted, followed by its arguments.
+ *     - Return: the new process's program id (pid). Must return pid -1,
+ *           which otherwise should not be a valid pid, if the program
+ *           cannot load or run for any reason.
+ * Discription: runs the executable whose name is given in command, passing
+ *     any given arguments. The parent process cannot return from the exec
+ *     until it knows whether the child process successfully loaded its executable.
+ *     You must use appropriate synchronization to ensure this.
+ */
+static pid_t sys_exec (const char *file) {
 
-// int wait (pid_t) {
-//
-// }
-//
-// bool create (const char *file, unsigned initial_size) {
-//
-// }
-//
-// bool remove (const char *file) {
-//
-// }
-//
-// int open (const char *file) {
-//
-// }
-//
-// int filesize (int fd) {
-//
-// }
-//
-// int read (int fd, void *buffer, unsigned length) {
-//
-// }
-//
+}
+
 /*
-Writes size bytes from buffer to the open file fd. Returns the number of bytes actually written, which may be less than size if some bytes could not be written.
-Writing past end-of-file would normally extend the file, but file growth is not implemented by the basic file system. The expected behavior is to write as many bytes as possible up to end-of-file and return the actual number written, or 0 if no bytes could be written at all.
+ * System Call: int wait(pid_t pid)
+ *     - Parameters:
+ *         - pid: the pid of a child process to be waiting for.
+ *     - Return: the status that pid passed to exit. If pid did not call exit(),
+ *           but was terminated by the kernel (e.g. killed due to an exception), wait(pid)
+ *           must return -1.
+ * Description: Waits for a child process pid and retrieves the child's exit status.
+ */
+int wait (pid_t) {
 
-Fd 1 writes to the console. Your code to write to the console should write all of buffer in one call to putbuf(), at least as long as size is not bigger than a few hundred bytes. (It is reasonable to break up larger buffers.) Otherwise, lines of text output by different processes may end up interleaved on the console, confusing both human readers and our grading scripts.
-*/
+}
+
+/*
+ * System Call: bool create (const char* file, unsigned initial_size)
+ *     - Parameters:         
+ *         - file: file name for the file to be created.
+ *         - initial_size: size in bytes for the file to be created.
+ *     - Return: true if successful, false otherwise.
+ * Description: creates a new file called file initially initial_size bytes in size.
+ */
+bool create (const char *file, unsigned initial_size) {
+
+}
+
+/*
+ * System Call: bool remove (const char* file)
+ *     - Parameters:
+ *         - file: file name of the file to be deleted.
+ *     - Return: true if successful, false otherwise.
+ * Description: deletes the file called file. A file may be removed regardless of whether
+ *     it is open or closed, and removing an open file does not close it.
+ */
+bool remove (const char *file) {
+
+}
+
+/*
+ * System Call: int open (const char *file)
+ *     - Parameters:
+ *         - file:
+ *     - Return: a nonnegative integer handle called a "file descriptor" (fd),
+ *           or -1 if the file could not be opened.
+ * Description: opens the file called file.
+ */
+int open (const char *file) {
+
+}
+
+/*
+ * System Call: int filesize (int fd)
+ *     - Parameters:
+ *         - fd: file descriptor of the file to be checked.
+ *     - Return: size of file in bytes.
+ * Description: returns the size, in bytes, of the file open as fd.
+ */
+int filesize (int fd) {
+
+}
+
+/*
+ * System Call: int read (int fd, void *buffer, unsigned size)
+ *     - Parameters:
+ *         - fd: file descriptor to the file to be read.
+ *         - buffer: buffer for data read.
+ *         - size: size, in bytes, to be read.
+ *     - Return: the number of bytes actually read (0 at end of file), or -1 if
+ *           the file could not be read (due to a condition other than end of file).
+ * Description: reads size bytes from the file open as fd into buffer. Fd 0 reads from
+ *     the keyboard using input_getc().
+ */
+int read (int fd, void *buffer, unsigned length) {
+
+}
+
+/*
+ * System Call: int write (int fd, const void* buffer, unsigned size)
+ *     - Parameters:
+ *         - fd: file descriptor for the file to be writen.
+ *         - buffer: buffer for data to be writen.
+ *         - size: size of data to be written.
+ *     - Return: the number of bytes actually written, which may be less than size
+ *           if some bytes could not be written.
+ * Description: writes size bytes from buffer to the open file fd. Fd 1 writes to the console.
+ *     Your code to write to the console should write all of buffer in one call to putbuf(),
+ *     at least as long as size is not bigger than a few hundred bytes.
+ */
 int sys_write (int fd, const void *buffer, unsigned size) {
    // writing to the console
    if (fd == 1)
@@ -214,16 +288,37 @@ int sys_write (int fd, const void *buffer, unsigned size) {
       return size;
    }
 }
-//
-// void seek (int fd, unsigned position) {
-//
-// }
-//
-// unsigned tell (int fd) {
-//
-// }
-//
-// void close (int fd) {
-//
-// }
+
+/*
+ * System Call: void seek (int fd, unsigned position)
+ *     - Parameters:
+ *         - fd: file descriptor of file to be read or written.
+ *         - position:
+ * Description: changes the next byte to be read or written in open file fd to position, expressed
+ *     in bytes from the beginning of the file. (Thus, a position of 0 is the file's start.)
+ */
+void seek (int fd, unsigned position) {
+
+}
+
+/*
+ * System Call: unsigned tell (int fd)
+ *     - Parameters:
+ *         - fd: file descriptor of file to be read or written.
+ *     - Return: position of the next byte to be read or written.
+ * Description: returns the position of the next byte to be read or written in open file fd, expressed
+ *     in bytes from the beginning of the file.
+ */
+unsigned tell (int fd) {
+  
+}
+
+/*
+ * System Call: void close (int fd)
+ *     - Parameters: file descriptor to be closed.
+ * Description: closes file descriptor fd.
+ */
+void close (int fd) {
+   
+}
 
