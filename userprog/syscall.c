@@ -44,6 +44,7 @@ static void syscall_handler (struct intr_frame *f UNUSED) {
             break;
         /* Terminate this process. */
         case SYS_EXIT:
+            ;
             int status;
             user_mem_read(&status, sp, sizeof(status));
             sys_exit(status);
@@ -71,6 +72,7 @@ static void syscall_handler (struct intr_frame *f UNUSED) {
             break;
         /* Write to a file. */
         case SYS_WRITE:
+            ;
             int fd;
             user_mem_read(&fd, sp, sizeof(fd));
             sp = (int *) sp + 1;
