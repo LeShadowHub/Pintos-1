@@ -51,6 +51,7 @@ static void syscall_handler (struct intr_frame* f UNUSED) {
     switch (syscall_num) {
         /* Halt the operating system. */
         case SYS_HALT:
+            // syscall, no return
             sys_halt();
             break;
         /* Terminate this process. */
@@ -60,51 +61,62 @@ static void syscall_handler (struct intr_frame* f UNUSED) {
             // get status from stack
             int status;
             mem_read(&status, sp, sizeof(status));
-            // syscall
+            // syscall, no return
             sys_exit(status);
             break;
         /* Start another process. */
         case SYS_EXEC:
             // increment stack pointer
             sp = (uint32_t *) sp + 1;
-            // syscall
+            // syscall, return pid_t
             f->eax = sys_exec((char*) *sp);
             break;
         /* Wait for a child process to die. */
         case SYS_WAIT:
             // increment stack pointer
             sp = (uint32_t *) sp + 1;
+            // syscall, return int
             f->eax = sys_wait((pid_t) *sp);
             break;
         /* Create a file. */
         case SYS_CREATE:
             // increment stack pointer
             sp = (uint32_t *) sp + 1;
-            
+            // syscall, return bool
+            f->eax = sys_create (const char* file, unsigned initial_size);
+
             break;
         /* Delete a file. */
         case SYS_REMOVE:
             // increment stack pointer
             sp = (uint32_t *) sp + 1;
+            // syscall, return bool
+            f->eax = sys_remove (const char* file);
+
             
             break;
         /* Open a file. */
         case SYS_OPEN:
             // increment stack pointer
             sp = (uint32_t *) sp + 1;
-            
+            // syscall, return int
+            f->eax = sys_open (const char* file);
             break;
         /* Obtain a file's size. */
         case SYS_FILESIZE:
             // increment stack pointer
             sp = (uint32_t *) sp + 1;
-            
+            // syscall, return int
+            f->eax = sys_filesize (int fd);
+
             break;
         /* Read from a file. */
         case SYS_READ:
             // increment stack pointer
             sp = (uint32_t *) sp + 1;
-            
+            // syscall, return int
+            f->eax = sys_read (int fd, void* buffer, unsigned length);
+
             break;
         /* Write to a file. */
         case SYS_WRITE:
@@ -120,26 +132,33 @@ static void syscall_handler (struct intr_frame* f UNUSED) {
             sp = (void **) sp + 1;
             unsigned size;
             mem_read(&size, sp, sizeof(size));
-            // syscall
+            // syscall, return int
             f->eax = sys_write(fd, buffer, size);
             break;
         /* Change position in a file. */
         case SYS_SEEK:
             // increment stack pointer
-            sp = (uint32_t *) sp + 1;
             
+            // syscall, no return
+            sys_seek (int fd, unsigned position);
             break;
         /* Report current position in a file. */
         case SYS_TELL:
             // increment stack pointer
             sp = (uint32_t *) sp + 1;
-            
+            // syscall, return
+            sys_tell (int fd);
+
             break;
         /* Close a file. */
         case SYS_CLOSE:
             // increment stack pointer
             sp = (uint32_t *) sp + 1;
-            
+            // get fd
+            int fd;
+            mem_read(&fd, sp, sizeof(fd));
+            // syscall, no return
+            sys_close (fd);
             break;
             
             
@@ -172,8 +191,7 @@ static void syscall_handler (struct intr_frame* f UNUSED) {
 
 }
 
-
-
+/************************ Memory Access Functions Implementation ************************/
 
 /*
  * void mem_read(void* dest_addr, void* uaddr, size_t size)
@@ -199,9 +217,6 @@ static void mem_read(void* dest_addr, void* uaddr, size_t size) {
         *(uint8_t*)(dest_addr + i) = byte_data & 0xFF;
     }
 }
-
-
-
 
 /*
  * int mem_read_byte (const uint8_t* uaddr)
@@ -264,7 +279,12 @@ void sys_halt (void) { shutdown_power_off(); }
  *     of 0 indicates success and nonzero values indicate errors.
  */
 void sys_exit (int status) {
+    //
+    printf("%s: exit(%d)\n", thread_current()->name, status);
+    // assign status
     
+    //
+    thread_exit();
 }
 
 /*
@@ -355,7 +375,7 @@ int sys_filesize (int fd) {
  *     the keyboard using input_getc().
  */
 int sys_read (int fd, void* buffer, unsigned length) {
-
+    
 }
 
 /*
