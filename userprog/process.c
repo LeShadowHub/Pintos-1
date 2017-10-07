@@ -24,6 +24,8 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char ** argv, int argc, void (**eip) (void), void **esp);
+static struct semaphore *sema_init_process; // Synchronize between process_execute and start_process
+
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -31,9 +33,7 @@ static bool load (const char ** argv, int argc, void (**eip) (void), void **esp)
    thread id, or TID_ERROR if the thread cannot be created.
    Input: the entire string token from command line input (or maybe exec)
 */
-tid_t
-process_execute (const char *cmdline)
-{
+tid_t process_execute (const char *cmdline) {
   char *file_name;
   tid_t tid;
   // NOTE:
@@ -41,32 +41,24 @@ process_execute (const char *cmdline)
   // AND LOGGING_ENABLE = 1 in lib/log.h
   // Also, probably won't pass with logging enabled.
   log(L_TRACE, "Started process execute: %s", cmdline);
-
-  struct process_control_block *pcb = malloc(sizeof(struct process_control_block));
-  if (pcb == NULL) return TID_ERROR;
-
-  sema_init(&pcb->sema_init_process, 0); // maybe need to initialize before this
-  pcb->parent_tid = thread_current()->tid;
   /* Make a copy of cmdline argument.
      Otherwise there's a race between the caller and load(). */
-     pcb->cmdline = palloc_get_page (0);
-  if (pcb->cmdline == NULL) {
-     free(pcb);
-     return TID_ERROR;
- }
-  strlcpy (pcb->cmdline, cmdline, PGSIZE);
+  char *cmdline_cp = palloc_get_page(0);
+  if (cmdline_cp == NULL)  return TID_ERROR;
+  strlcpy (cmdline_cp, cmdline, PGSIZE);
   // extract file name
   char *saveptr;
   file_name = strtok_r(cmdline, " \t\n", &saveptr); // cmdline will only contain the file name now
 
-  /* Create a new thread to execute the executable. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, pcb);
+  sema_init(sema_init_process, 0);
 
-  sema_down(&pcb->sema_init_process);
+  /* Create a new thread to execute the executable. */
+  tid = thread_create (file_name, PRI_DEFAULT, start_process, cmdline_cp);
+
+  sema_down(sema_init_process);
 
   if (tid == TID_ERROR) {
-     palloc_free_page (pcb->cmdline);
-     free(pcb); // also pointed to by t->pcb
+     palloc_free_page (cmdline_cp);
  }
 
   return tid;
@@ -77,12 +69,9 @@ process_execute (const char *cmdline)
    Since already inside the thread, only need to pass the command (which is not contained in struct thread)
    Note commend_ includes the command/file name
 */
-static void
-start_process (void *pcb_)
-{
+static void start_process (void *command_) {
    struct thread *t = thread_current();
-  struct process_control_block *pcb = pcb_;
-  char *command = pcb->cmdline;
+  char *command = command_;
   struct intr_frame if_;
   bool success;
 
@@ -100,10 +89,10 @@ start_process (void *pcb_)
   while (argv[argc] = strtok_r(NULL, " \t\n", &saveptr) != NULL)  argc++;  // this way, terminated with NULL
 
   success = load (argv, argc, &if_.eip, &if_.esp);
-  t->pcb = pcb;  // assign to thread's pcb struct
-  sema_up(&pcb->sema_init_process);
+  sema_up(sema_init_process);
 
-  palloc_free_page(argv);
+  palloc_free_page(argv);  // args already pushed to user stack, so can free them here
+
   /* If load failed, quit. */
   if (!success)
     thread_exit ();
@@ -466,11 +455,11 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   return true;
 }
 
-/* Create a minimal stack by mapping a zeroed page at the top of
-   user virtual memory. */
-static bool
-setup_stack (void **esp, const char **argv, int argc)
-{
+/*
+   Create a minimal stack by mapping a zeroed page at the top of
+   user virtual memory.
+*/
+static bool setup_stack (void **esp, const char **argv, int argc) {
   uint8_t *kpage;
   bool success = false;
 

@@ -4,7 +4,6 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
-#include "userprog/process.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -20,6 +19,9 @@ enum thread_status
 typedef int tid_t;
 #define TID_ERROR ((tid_t) -1)          /* Error value for tid_t. */
 
+/* Process identifier. */
+typedef int pid_t;
+#define PID_ERROR ((pid_t) -1)
 
 /* Thread priorities. */
 #define PRI_MIN 0                       /* Lowest priority. */
@@ -98,7 +100,10 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
-    struct process_control_block *pcb;
+    pid_t pid;						          // Process ID
+    tid_t parent_tid;	                   // Parent process's tid, putting the entire parent thread struct here is too big
+    int exit_status;                    // exit status, valid when thread is in DYING state
+
 #endif
 
     /* Owned by thread.c. */
