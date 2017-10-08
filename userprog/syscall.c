@@ -338,6 +338,23 @@ int sys_wait(pid_t pid) {
    return status;
 }
 
+/*Check if filename is valid*/
+static void check_file_string(const char*file){
+    /*Check if filename is valid*/
+    char* fp = file;
+    while (true)
+    {
+        int result = user_mem_read_byte ((unsigned char*)file);
+        if (result == -1){
+            thread_exit ();
+        }
+        else if ((char)result == '\0')
+            return;
+        fp++;
+    }
+    
+}
+
 /*
 * bool sys_create (const char* file, unsigned initial_size)
 *     - Parameters:
@@ -348,18 +365,7 @@ int sys_wait(pid_t pid) {
 */
 bool sys_create (const char* file, unsigned initial_size) {
 
-    /*Check if filename is valid*/
-    char* fp = file;
-    while (true)
-    {
-        int result = user_mem_read_byte ((unsigned char*)file);
-        if (result == -1){
-            thread_exit ();
-        }
-        else if ((char)result == '\0')
-            break;
-        fp++;
-    }
+    check_file_string(file);
     /* TO DO:
      * NEED TO CHECK IF CURRENT DIR IS MARKED FOR DELETION
      */
@@ -380,18 +386,7 @@ bool sys_create (const char* file, unsigned initial_size) {
 */
 bool sys_remove (const char* file) {
 
-    /*Check if filename is valid*/
-    char* fp = file;
-    while (true)
-    {
-        int result = user_mem_read_byte ((unsigned char*)file);
-        if (result == -1){
-            thread_exit ();
-        }
-        else if ((char)result == '\0')
-            break;
-        fp++;
-    }
+    check_file_string(file);
     
     /*Check if file exists*/
     struct file *f= filesys_open(file);
@@ -414,6 +409,7 @@ bool sys_remove (const char* file) {
 * Description: opens the file called file.
 */
 int sys_open (const char* file) {
+   check_file_string(file);
 
 }
 
