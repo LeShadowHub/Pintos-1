@@ -181,7 +181,9 @@ thread_create (const char *name, int priority,
 
   /* Initialize thread. */
   init_thread (t, name, priority);
-  tid = t->tid = allocate_tid ();
+  tid = t->tid;
+  ASSERT (tid != -1);
+  sema_init(&t->pcb->process_exec_sema, 0);  // Synchronize between process_execute and start_process
 
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
@@ -458,6 +460,7 @@ init_thread (struct thread *t, const char *name, int priority)
   ASSERT (name != NULL);
 
   memset (t, 0, sizeof *t); // initialize every byte to 0
+  t->tid = allocate_tid();
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE; // stack starts at the top of the page allocated to this thread
@@ -467,6 +470,15 @@ init_thread (struct thread *t, const char *name, int priority)
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
+
+  #ifdef USERPROG
+  list_init(&t->child_list);
+  t->pcb = palloc_get_page(0);
+  t->pcb->pid = t->tid;   // one to one mapping
+  t->pcb->already_wait = 0;
+  t->pcb->killed = 0;
+  t->pcb->orphan = 0;
+  #endif
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
@@ -578,7 +590,29 @@ allocate_tid (void)
 
   return tid;
 }
-
+
+/*
+   return the thread structure specified by the tid
+   return NULL if no such a thread
+*/
+struct thread * get_thread_by_tid(tid_t tid) {
+   struct list_elem *e;
+   struct thread *t;
+   enum intr_level old_level;
+
+   old_level = intr_disable ();
+
+   for (e = list_begin (&all_list); e != list_end (&all_list);
+        e = list_next (e))
+     {
+      t = list_entry (e, struct thread, allelem);
+      if (t->tid == tid) break;
+     }
+   intr_set_level (old_level);
+   if (e == list_end(&all_list)) return NULL;
+   return t;
+}
+
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);

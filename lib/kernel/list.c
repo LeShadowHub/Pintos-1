@@ -177,7 +177,7 @@ list_insert (struct list_elem *before, struct list_elem *elem)
   before->prev = elem;
 }
 
-/* Removes elements FIRST though LAST (exclusive) from their
+/* Removes elements FIRST through LAST (exclusive) from their
    current list, then inserts them just before BEFORE, which may
    be either an interior element or a tail. */
 void

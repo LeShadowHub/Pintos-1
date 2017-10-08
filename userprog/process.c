@@ -31,10 +31,9 @@ static bool load (const char ** argv, int argc, void (**eip) (void), void **esp)
    thread id, or TID_ERROR if the thread cannot be created.
    Input: the entire string token from command line input (or maybe exec)
 */
-tid_t
-process_execute (const char *cmdline)
-{
+tid_t process_execute (const char *cmdline) {
   char *file_name;
+  struct thread *cur = thread_current();
   tid_t tid;
   // NOTE:
   // To see this print, make sure LOGGING_LEVEL in this file is <= L_TRACE (6)
@@ -42,31 +41,25 @@ process_execute (const char *cmdline)
   // Also, probably won't pass with logging enabled.
   log(L_TRACE, "Started process execute: %s", cmdline);
 
-  struct process_control_block *pcb = malloc(sizeof(struct process_control_block));
-  if (pcb == NULL) return TID_ERROR;
-
-  sema_init(&pcb->sema_init_process, 0); // maybe need to initialize before this
-  pcb->parent_tid = thread_current()->tid;
   /* Make a copy of cmdline argument.
      Otherwise there's a race between the caller and load(). */
-     pcb->cmdline = palloc_get_page (0);
-  if (pcb->cmdline == NULL) {
-     free(pcb);
-     return TID_ERROR;
- }
-  strlcpy (pcb->cmdline, cmdline, PGSIZE);
+  char *cmdline_cp = palloc_get_page(0);
+  if (cmdline_cp == NULL)  return TID_ERROR;
+  strlcpy (cmdline_cp, cmdline, PGSIZE);
   // extract file name
   char *saveptr;
   file_name = strtok_r(cmdline, " \t\n", &saveptr); // cmdline will only contain the file name now
 
   /* Create a new thread to execute the executable. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, pcb);
-
-  sema_down(&pcb->sema_init_process);
+  tid = thread_create (file_name, PRI_DEFAULT, start_process, cmdline_cp);
 
   if (tid == TID_ERROR) {
-     palloc_free_page (pcb->cmdline);
-     free(pcb); // also pointed to by t->pcb
+     palloc_free_page (cmdline_cp);
+  }
+  else {  // if child wasn't created, sema wouldn't have been inited
+     struct thread *child = get_thread_by_tid(tid);  // get the newly created thread
+     list_push_back(&cur->child_list, &child->pcb->elem);  // add the new child to parent's child list
+     sema_down(&child->pcb->process_exec_sema);  // sema inited in thread_create
  }
 
   return tid;
@@ -77,15 +70,13 @@ process_execute (const char *cmdline)
    Since already inside the thread, only need to pass the command (which is not contained in struct thread)
    Note commend_ includes the command/file name
 */
-static void
-start_process (void *pcb_)
-{
-   struct thread *t = thread_current();
-  struct process_control_block *pcb = pcb_;
-  char *command = pcb->cmdline;
+static void start_process (void *command_) {
+  char *command = command_;
   struct intr_frame if_;
   bool success;
-
+  struct thread *cur = thread_current();
+  // lock_init(&pid_lock);
+  // thread_current()->pid = allocate_pid();
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
@@ -100,13 +91,16 @@ start_process (void *pcb_)
   while (argv[argc] = strtok_r(NULL, " \t\n", &saveptr) != NULL)  argc++;  // this way, terminated with NULL
 
   success = load (argv, argc, &if_.eip, &if_.esp);
-  t->pcb = pcb;  // assign to thread's pcb struct
-  sema_up(&pcb->sema_init_process);
 
-  palloc_free_page(argv);
+  sema_up(&cur->pcb->process_exec_sema);
+
+  palloc_free_page(argv);  // args already pushed to user stack, so can free them here
+
   /* If load failed, quit. */
-  if (!success)
-    thread_exit ();
+  if (!success) {
+     cur->pcb->exit_status = -1;  // kernel terminate the process, so exit code is -1
+     thread_exit();  // will destory this thread, while keeping its pcb
+ }
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -127,36 +121,81 @@ start_process (void *pcb_)
 
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
-int
-process_wait (tid_t child_tid UNUSED)
-{
-  return -1;
+int process_wait (tid_t child_tid) {
+   struct thread *cur = thread_current();
+   struct list child_list = cur->child_list;
+   struct pcb_t *child;
+   struct list_elem *e;  // used to find child thread
+   int child_exit_status;
+
+   // return -1 if child_tid is TID_ERROR, because kernel kills it during its creation
+   if (child_tid == TID_ERROR) return -1;
+
+   // find the child thread specified by child_tid
+   for (e = list_begin (&child_list); e != list_end (&child_list);
+      e = list_next (e)) {
+      // convert list_element into the pcb_t that contains it
+      child = list_entry(e, struct pcb_t, elem);
+      if (child->pid == child_tid) break; // found child
+   }
+
+   if (e == list_end(&child_list)) return -1;  // child_tid is not a child of current process
+   if (child->already_wait) return -1;    // wait() or process_wait() already called upon this child
+   else child->already_wait = 1; // mark wait() already called
+
+   sema_init(&child->process_wait_sema, 0);  // think should init here, cuz only necessary to wait when process_wait is called
+
+   if (!child->killed)
+      sema_down(&child->process_wait_sema);
+   ASSERT (child->killed == 1);
+   child_exit_status = child->exit_status;
+  // remove child from parent's child list
+  list_remove(e);
+
+  // finally, free child's pcb, since never will access it again
+  // child thread already destroyed in thread_exit, kept pcb for exit_status
+  palloc_free_page(child);
+
+  return child_exit_status;
 }
 
 /* Free the current process's resources. */
-void
-process_exit (void)
-{
-  struct thread *cur = thread_current ();
-  uint32_t *pd;
+void process_exit (void) {
+   struct thread *cur = thread_current ();
+   uint32_t *pd;
 
-  /* Destroy the current process's page directory and switch back
-     to the kernel-only page directory. */
-  pd = cur->pagedir;
-  if (pd != NULL)
-    {
+
+   /* clean up this thread's children, free the killed ones, mark the rest orphan */
+   while (!list_empty(&cur->child_list)) {
+      struct list_elem * e = list_pop_front(&cur->child_list);
+      struct pcb_t *child = list_entry(e, struct pcb_t, elem);
+      if (child->killed) palloc_free_page(child);
+      else child->orphan = 1;
+   }
+
+   cur->pcb->killed = 1;   // mark this thread killed
+   sema_up(&cur->pcb->process_wait_sema);  // technically, this shouldnt cause problem when it's not inited
+   // if this thread is an orphan, can free its pcb it right now; thread itself will be freed upon return
+   if (cur->pcb->orphan) palloc_free_page(cur->pcb);
+
+   /* Destroy the current process's page directory and switch back
+   to the kernel-only page directory. */
+   pd = cur->pagedir;
+   if (pd != NULL)
+   {
       /* Correct ordering here is crucial.  We must set
-         cur->pagedir to NULL before switching page directories,
-         so that a timer interrupt can't switch back to the
-         process page directory.  We must activate the base page
-         directory before destroying the process's page
-         directory, or our active page directory will be one
-         that's been freed (and cleared). */
+      cur->pagedir to NULL before switching page directories,
+      so that a timer interrupt can't switch back to the
+      process page directory.  We must activate the base page
+      directory before destroying the process's page
+      directory, or our active page directory will be one
+      that's been freed (and cleared). */
       cur->pagedir = NULL;
       pagedir_activate (NULL);
       pagedir_destroy (pd);
-    }
+   }
 }
+
 
 /* Sets up the CPU for running user code in the current
    thread.
@@ -466,11 +505,11 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   return true;
 }
 
-/* Create a minimal stack by mapping a zeroed page at the top of
-   user virtual memory. */
-static bool
-setup_stack (void **esp, const char **argv, int argc)
-{
+/*
+   Create a minimal stack by mapping a zeroed page at the top of
+   user virtual memory.
+*/
+static bool setup_stack (void **esp, const char **argv, int argc) {
   uint8_t *kpage;
   bool success = false;
 
@@ -539,4 +578,3 @@ install_page (void *upage, void *kpage, bool writable)
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
 }
-

@@ -3,35 +3,40 @@
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
+#include "threads/synch.h"
 
 static void syscall_handler (struct intr_frame *);
 
 /************************ System Calls ************************/
 static void sys_halt (void);
 static void sys_exit (int status);
-static pid_t sys_exec (const char* cmd_line);
+static pid_t sys_exec (const char* cmdline);
 static int sys_wait (pid_t);
 static bool sys_create (const char* file, unsigned initial_size);
 static bool sys_remove (const char* file);
 static int sys_open (const char* file);
 static int sys_filesize (int fd);
-static int sys_read (int fd, void* buffer, unsigned length);
+static int sys_read (int fd, void* buffer, unsigned size);
 static int sys_write (int fd, const void* buffer, unsigned length);
 static void sys_seek (int fd, unsigned position);
 static unsigned sys_tell (int fd);
 static void sys_close (int fd);
 
 /************************ Memory Access Functions ************************/
-static void mem_read(void* dest_addr, void* uaddr, size_t size);
-static int mem_read_byte (const uint8_t *uaddr);
-static bool mem_write_byte (uint8_t *dest, uint8_t byte);
+static void user_mem_read(void* dest_addr, void* uaddr, size_t size);
+static int user_mem_read_byte (const uint8_t *uaddr);
+static bool user_mem_write_byte (uint8_t *dest, uint8_t byte);
 static void invalid_user_access(void);
+
+static struct lock filesys_lock;
 
 /*
  * void syscall_init (void)
  * Description: system call initialization.
  */
 void syscall_init (void) {
+   lock_init(&filesys_lock);
     intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
@@ -46,132 +51,133 @@ static void syscall_handler (struct intr_frame* f UNUSED) {
     void* sp = f->esp;
     // get syscall number
     uint32_t syscall_num;
-    mem_read(&syscall_num, sp, sizeof(syscall_num));
+    user_mem_read(&syscall_num, sp, sizeof(syscall_num));
+    sp = (uint32_t *) sp + 1;     // increment stack pointer
+
     // excute syscall according to syscall number
     switch (syscall_num) {
         /* Halt the operating system. */
         case SYS_HALT:
-            // syscall, no return
-            sys_halt();
-            break;
+        {
+           sys_halt();
+           break;
+        }
         /* Terminate this process. */
         case SYS_EXIT:
-            // increment stack pointer
-            sp = (uint32_t *) sp + 1;
-            // get status from stack
-            int status;
-            mem_read(&status, sp, sizeof(status));
-            // syscall, no return
-            sys_exit(status);
-            break;
+        {
+           // get status from stack
+           int status;
+           user_mem_read(&status, sp, sizeof(status));
+           sys_exit(status);
+           break;
+        }
         /* Start another process. */
         case SYS_EXEC:
-            // increment stack pointer
-            sp = (uint32_t *) sp + 1;
-            // syscall, return pid_t
-            f->eax = sys_exec((char*) *sp);
-            break;
+        {
+           char *cmdline;
+           user_mem_read(&cmdline, sp, sizeof(cmdline));
+           // syscall, return pid_t
+           f->eax = sys_exec(cmdline);
+           break;
+        }
+
         /* Wait for a child process to die. */
         case SYS_WAIT:
-            // increment stack pointer
-            sp = (uint32_t *) sp + 1;
-            // syscall, return int
-            f->eax = sys_wait((pid_t) *sp);
-            break;
+        {
+           // syscall, return int
+           // f->eax = sys_wait((pid_t) *sp);
+           break;
+        }
+
         /* Create a file. */
         case SYS_CREATE:
-            // increment stack pointer
-            sp = (uint32_t *) sp + 1;
-            // syscall, return bool
-            f->eax = sys_create (const char* file, unsigned initial_size);
+        {
+           // syscall, return bool
+           // f->eax = sys_create (const char* file, unsigned initial_size);
+           break;
+        }
 
-            break;
         /* Delete a file. */
         case SYS_REMOVE:
-            // increment stack pointer
-            sp = (uint32_t *) sp + 1;
-            // syscall, return bool
-            f->eax = sys_remove (const char* file);
+        {
+           // syscall, return bool
+           // f->eax = sys_remove (const char* file);
+           break;
+        }
 
-            
-            break;
         /* Open a file. */
         case SYS_OPEN:
-            // increment stack pointer
-            sp = (uint32_t *) sp + 1;
-            // syscall, return int
-            f->eax = sys_open (const char* file);
-            break;
+        {
+           // syscall, return int
+           // f->eax = sys_open (const char* file);
+           break;
+        }
         /* Obtain a file's size. */
         case SYS_FILESIZE:
-            // increment stack pointer
-            sp = (uint32_t *) sp + 1;
-            // syscall, return int
-            f->eax = sys_filesize (int fd);
-
-            break;
+        {
+           // syscall, return int
+           // f->eax = sys_filesize (int fd);
+           break;
+        }
         /* Read from a file. */
         case SYS_READ:
-            // increment stack pointer
-            sp = (uint32_t *) sp + 1;
-            // syscall, return int
-            f->eax = sys_read (int fd, void* buffer, unsigned length);
-
-            break;
+        {
+           // syscall, return int
+           //f->eax = sys_read (int fd, void* buffer, unsigned length);
+           break;
+        }
         /* Write to a file. */
         case SYS_WRITE:
-            // get fd
-            sp = (uint32_t *) sp + 1;
-            int fd;
-            mem_read(&fd, sp, sizeof(fd));
-            // get buffer address
-            sp = (uint32_t *) sp + 1;
-            void *buffer;
-            mem_read(&buffer, sp, sizeof(buffer));
-            // get size
-            sp = (void **) sp + 1;
-            unsigned size;
-            mem_read(&size, sp, sizeof(size));
-            // syscall, return int
-            f->eax = sys_write(fd, buffer, size);
-            break;
+        {
+           // get fd
+           int fd;
+           user_mem_read(&fd, sp, sizeof(fd));
+           sp = (uint32_t *) sp + 1;
+           // get buffer address
+           void *buffer;
+           user_mem_read(&buffer, sp, sizeof(buffer));
+           sp = (void **) sp + 1;
+           // get size
+           unsigned size;
+           user_mem_read(&size, sp, sizeof(size));
+           // syscall, return int
+           f->eax = sys_write(fd, buffer, size);
+           break;
+        }
+
         /* Change position in a file. */
         case SYS_SEEK:
-            // increment stack pointer
-            
-            // syscall, no return
-            sys_seek (int fd, unsigned position);
-            break;
+        {
+           // syscall, no return
+           // sys_seek (int fd, unsigned position);
+           break;
+        }
+
         /* Report current position in a file. */
         case SYS_TELL:
-            // increment stack pointer
-            sp = (uint32_t *) sp + 1;
-            // syscall, return
-            sys_tell (int fd);
+        {
+           int fd;
+           // syscall, return
+           // sys_tell (fd);
+           break;
+        }
 
-            break;
         /* Close a file. */
         case SYS_CLOSE:
-            // increment stack pointer
-            sp = (uint32_t *) sp + 1;
-            // get fd
-            int fd;
-            mem_read(&fd, sp, sizeof(fd));
-            // syscall, no return
-            sys_close (fd);
-            break;
-            
-            
-            
+        {
+           // get fd
+          int fd;
+          user_mem_read(&fd, sp, sizeof(fd));
+          // syscall, no return
+          sys_close (fd);
+          break;
+        }
         /* Map a file into memory. */
         case SYS_MMAP:
             break;
         /* Remove a memory mapping. */
         case SYS_MUNMAP:
             break;
-            
-            
-        
         /* Change the current directory. */
         case SYS_CHDIR:
             break;
@@ -194,7 +200,7 @@ static void syscall_handler (struct intr_frame* f UNUSED) {
 /************************ Memory Access Functions Implementation ************************/
 
 /*
- * void mem_read(void* dest_addr, void* uaddr, size_t size)
+ * void user_mem_read(void* dest_addr, void* uaddr, size_t size)
  *     - Parameters:
  *         - dest_addr: destination address to save the result of memory read.
  *         - uaddr: starting memory location to be read from.
@@ -204,13 +210,13 @@ static void syscall_handler (struct intr_frame* f UNUSED) {
  *     because the user can pass a null pointer, a pointer to unmapped virtual memory, or a
  *     pointer to kernel virtual address space (above PHYS_BASE).
  */
-static void mem_read(void* dest_addr, void* uaddr, size_t size) {
+static void user_mem_read(void* dest_addr, void* uaddr, size_t size) {
     // uaddr must be below PHYS_BASE and must not be NULL pointer
     if (uaddr == NULL || !is_user_vaddr(uaddr)) invalid_user_access();
     // read
     for (unsigned int i = 0; i < size; i++) {
         // read a byte from memory
-        int byte_data = mem_read_byte(uaddr + i) ;
+        int byte_data = user_mem_read_byte(uaddr + i) ;
         // if byte_data = -1, the last memory read was a segment fault
         if (byte_data == -1) invalid_user_access();
         // save this byte of data to destination address
@@ -219,7 +225,7 @@ static void mem_read(void* dest_addr, void* uaddr, size_t size) {
 }
 
 /*
- * int mem_read_byte (const uint8_t* uaddr)
+ * int user_mem_read_byte (const uint8_t* uaddr)
  *     - Parameters:
  *         - uaddr: address in user space to be read.
  *     - Return: the byte value if successful, -1 if a segfault occurred.
@@ -227,7 +233,7 @@ static void mem_read(void* dest_addr, void* uaddr, size_t size) {
  *     uaddr must be below PHYS_BASE.
  *     uaddr points to a byte of memory.
  */
-static int mem_read_byte (const uint8_t* uaddr) {
+static int user_mem_read_byte (const uint8_t* uaddr) {
     int result;
     asm ("movl $1f, %0; movzbl %1, %0; 1:"
          : "=&a" (result) : "m" (*uaddr));
@@ -235,15 +241,15 @@ static int mem_read_byte (const uint8_t* uaddr) {
 }
 
 /*
- * bool mem_write_byte (uint8_t* dest, uint8_t byte)
- *     - Parameters: 
+ * bool user_mem_write_byte (uint8_t* dest, uint8_t byte)
+ *     - Parameters:
  *         - dest_addr: destination address for writing.
  *         - byte: byte of data to be written.
  *     - Return: true if successful, false if a segfault occurred.
  * Description: writes a byte to user address dest_addr.
  *     dest_addr must be below PHYS_BASE.
  */
-static bool mem_write_byte (uint8_t* dest_addr, uint8_t byte) {
+static bool user_mem_write_byte (uint8_t* dest_addr, uint8_t byte) {
     int error_code;
     asm ("movl $1f, %0; movb %b2, %1; 1:"
          : "=&a" (error_code), "=m" (*dest_addr) : "q" (byte));
@@ -261,34 +267,33 @@ static void invalid_user_access() {
 
 
 /************************ System Call Implementation ************************/
-    
+
 /*
  * void sys_halt (void)
- * Description: terminates Pintos by calling shutdown_power_off() 
- *     (declared in threads/init.h). This should be seldom used, 
- *     because you lose some information about possible deadlock 
+ * Description: terminates Pintos by calling shutdown_power_off()
+ *     (declared in threads/init.h). This should be seldom used,
+ *     because you lose some information about possible deadlock
  *     situations, etc.
  */
 void sys_halt (void) { shutdown_power_off(); }
 
 /*
  * void sys_exit (int status)
- * Discription: terminates the current user program, returning status 
- *     to the kernel. If the process's parent waits for it (see below), 
- *     this is the status that will be returned. Conventionally, a status 
+ * Discription: terminates the current user program, returning status
+ *     to the kernel. If the process's parent waits for it (see below),
+ *     this is the status that will be returned. Conventionally, a status
  *     of 0 indicates success and nonzero values indicate errors.
  */
 void sys_exit (int status) {
-    //
-    printf("%s: exit(%d)\n", thread_current()->name, status);
+    struct thread *cur = thread_current();
+    printf("%s: exit(%d)\n", cur->name, status);
     // assign status
-    
-    //
+    cur->pcb->exit_status = status;
     thread_exit();
 }
 
 /*
- * pid_t sys_exec (const char* cmd_line)
+ * pid_t sys_exec (const char* cmdline)
  *     - Parameters:
  *         - command: command to be excuted, followed by its arguments.
  *     - Return: the new process's program id (pid). Must return pid -1,
@@ -299,8 +304,12 @@ void sys_exit (int status) {
  *     until it knows whether the child process successfully loaded its executable.
  *     You must use appropriate synchronization to ensure this.
  */
-pid_t sys_exec (const char* cmd_line) {
-    return 0;
+pid_t sys_exec (const char* cmdline) {
+    lock_acquire(&filesys_lock);  // in load(), file system is used
+    pid_t pid = process_execute(cmdline);
+    lock_release(&filesys_lock);
+
+    return pid;
 }
 
 /*
@@ -314,11 +323,13 @@ pid_t sys_exec (const char* cmd_line) {
  * Function Calls:
  *     - [int process_wait(tid_t child_tid)] in process.h
  */
-int sys_wait(pid_t pid) { return process_wait(pid); }
+int sys_wait(pid_t pid) {
+   return process_wait(pid); // for now, hofefully exception returns -1
+}
 
 /*
  * bool sys_create (const char* file, unsigned initial_size)
- *     - Parameters:         
+ *     - Parameters:
  *         - file: file name for the file to be created.
  *         - initial_size: size in bytes for the file to be created.
  *     - Return: true if successful, false otherwise.
@@ -337,7 +348,7 @@ bool sys_create (const char* file, unsigned initial_size) {
  *     it is open or closed, and removing an open file does not close it.
  */
 bool sys_remove (const char* file) {
-    
+
 }
 
 /*
@@ -375,7 +386,7 @@ int sys_filesize (int fd) {
  *     the keyboard using input_getc().
  */
 int sys_read (int fd, void* buffer, unsigned length) {
-    
+
 }
 
 /*
@@ -390,7 +401,11 @@ int sys_read (int fd, void* buffer, unsigned length) {
  *     Your code to write to the console should write all of buffer in one call to putbuf(),
  *     at least as long as size is not bigger than a few hundred bytes.
  */
-int sys_write (int fd, const void* buffer, unsigned length) {
+int sys_write (int fd, const void* buffer, unsigned size) {
+   if (fd == 1) {
+      putbuf(buffer, size);
+      return size;
+   }
 
 }
 
@@ -425,4 +440,3 @@ unsigned sys_tell (int fd) {
 void sys_close (int fd) {
 
 }
-
