@@ -348,6 +348,26 @@ int sys_wait(pid_t pid) {
 */
 bool sys_create (const char* file, unsigned initial_size) {
 
+    /*Check if filename is valid*/
+    char* fp = file;
+    while (true)
+    {
+        int result = user_mem_read_byte ((unsigned char*)file);
+        if (result == -1){
+            thread_exit ();
+        }
+        else if ((char)result == '\0')
+            break;
+        fp++;
+    }
+    /* TO DO:
+     * NEED TO CHECK IF CURRENT DIR IS MARKED FOR DELETION
+     */
+    lock_acquire(&filesys_lock);
+    bool result = filesys_create (file, initial_size);
+    lock_release(&filesys_lock);
+    return result;
+   
 }
 
 /*
@@ -360,6 +380,29 @@ bool sys_create (const char* file, unsigned initial_size) {
 */
 bool sys_remove (const char* file) {
 
+    /*Check if filename is valid*/
+    char* fp = file;
+    while (true)
+    {
+        int result = user_mem_read_byte ((unsigned char*)file);
+        if (result == -1){
+            thread_exit ();
+        }
+        else if ((char)result == '\0')
+            break;
+        fp++;
+    }
+    
+    /*Check if file exists*/
+    struct file *f= filesys_open(file);
+    if(f == NULL) return;
+    filesys_close(file);
+   
+    lock_acquire(&filesys_lock);
+    bool result = filesys_remove(file);
+    lock_release(&filesys_lock);
+    return result;
+   
 }
 
 /*
