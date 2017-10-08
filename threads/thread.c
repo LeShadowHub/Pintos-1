@@ -181,10 +181,18 @@ thread_create (const char *name, int priority,
 
   /* Initialize thread. */
   init_thread (t, name, priority);
-  tid = t->tid;
+  tid = t->tid = allocate_tid();  // cannot be inside init_thread cuz of how lock works
   ASSERT (tid != -1);
-  sema_init(&t->pcb->process_exec_sema, 0);  // Synchronize between process_execute and start_process
 
+  #ifdef USERPROG
+  // since page allocation can only be done in a running thread,
+  t->pcb = palloc_get_page(0);
+  t->pcb->pid = tid;
+  t->pcb->already_wait = 0;
+  t->pcb->killed = 0;
+  t->pcb->orphan = 0;
+  sema_init(&t->pcb->process_exec_sema, 0);  // Synchronize between process_execute and start_process
+  #endif
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
   kf->eip = NULL;
@@ -460,7 +468,6 @@ init_thread (struct thread *t, const char *name, int priority)
   ASSERT (name != NULL);
 
   memset (t, 0, sizeof *t); // initialize every byte to 0
-  t->tid = allocate_tid();
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE; // stack starts at the top of the page allocated to this thread
@@ -473,11 +480,6 @@ init_thread (struct thread *t, const char *name, int priority)
 
   #ifdef USERPROG
   list_init(&t->child_list);
-  t->pcb = palloc_get_page(0);
-  t->pcb->pid = t->tid;   // one to one mapping
-  t->pcb->already_wait = 0;
-  t->pcb->killed = 0;
-  t->pcb->orphan = 0;
   #endif
 }
 
@@ -616,3 +618,4 @@ struct thread * get_thread_by_tid(tid_t tid) {
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+

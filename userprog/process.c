@@ -59,6 +59,7 @@ tid_t process_execute (const char *cmdline) {
   else {  // if child wasn't created, sema wouldn't have been inited
      struct thread *child = get_thread_by_tid(tid);  // get the newly created thread
      list_push_back(&cur->child_list, &child->pcb->elem);  // add the new child to parent's child list
+     sema_init(&child->pcb->process_wait_sema, 0);  // think should init here, cuz only necessary to wait when process_wait is called
      sema_down(&child->pcb->process_exec_sema);  // sema inited in thread_create
  }
 
@@ -95,7 +96,7 @@ static void start_process (void *command_) {
   sema_up(&cur->pcb->process_exec_sema);
 
   palloc_free_page(argv);  // args already pushed to user stack, so can free them here
-
+  palloc_free_page(command);
   /* If load failed, quit. */
   if (!success) {
      cur->pcb->exit_status = -1;  // kernel terminate the process, so exit code is -1
@@ -143,8 +144,6 @@ int process_wait (tid_t child_tid) {
    if (child->already_wait) return -1;    // wait() or process_wait() already called upon this child
    else child->already_wait = 1; // mark wait() already called
 
-   sema_init(&child->process_wait_sema, 0);  // think should init here, cuz only necessary to wait when process_wait is called
-
    if (!child->killed)
       sema_down(&child->process_wait_sema);
    ASSERT (child->killed == 1);
@@ -174,7 +173,8 @@ void process_exit (void) {
    }
 
    cur->pcb->killed = 1;   // mark this thread killed
-   sema_up(&cur->pcb->process_wait_sema);  // technically, this shouldnt cause problem when it's not inited
+   sema_up(&cur->pcb->process_wait_sema);  // hope this does not cause problem when sema_up is never reached
+
    // if this thread is an orphan, can free its pcb it right now; thread itself will be freed upon return
    if (cur->pcb->orphan) palloc_free_page(cur->pcb);
 

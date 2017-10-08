@@ -11,7 +11,7 @@ fi
 
 GDBMACROS=${GDBMACROS:-$GDBMACROS_DEFAULT}
 
-#GDBMACROS=/home/ramesh/EE461S/SKKU/pintos/misc/gdb-macros}
+#GDBMACROS=/home/aifusenno1/pintos/misc/gdb-macros}
 
 # Choose correct GDB.
 if command -v i386-elf-gdb >/dev/null 2>&1; then

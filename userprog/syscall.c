@@ -5,6 +5,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "threads/synch.h"
+#include "devices/shutdown.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -84,8 +85,9 @@ static void syscall_handler (struct intr_frame* f UNUSED) {
         /* Wait for a child process to die. */
         case SYS_WAIT:
         {
-           // syscall, return int
-           // f->eax = sys_wait((pid_t) *sp);
+           pid_t pid;
+           user_mem_read(&pid, sp, sizeof(pid));
+           f->eax = sys_wait(pid);
            break;
         }
 
