@@ -154,6 +154,7 @@ page_fault (struct intr_frame *f)
      if (!user) { // access by kernel
         f->eip = (void *) f->eax;
         f->eax = 0xffffffff;
+        return;
      }
   }
   /* END: ADDED CODE */
@@ -169,3 +170,4 @@ page_fault (struct intr_frame *f)
           user ? "user" : "kernel");
   kill (f);
 }
+

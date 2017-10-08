@@ -41,28 +41,40 @@ tid_t process_execute (const char *cmdline) {
   // Also, probably won't pass with logging enabled.
   log(L_TRACE, "Started process execute: %s", cmdline);
 
+
   /* Make a copy of cmdline argument.
      Otherwise there's a race between the caller and load(). */
   char *cmdline_cp = palloc_get_page(0);
-  if (cmdline_cp == NULL)  return TID_ERROR;
+  if (cmdline_cp == NULL) {
+     return TID_ERROR;
+  }
   strlcpy (cmdline_cp, cmdline, PGSIZE);
+
+  file_name = palloc_get_page(0);
+  if (file_name == NULL)  {
+     palloc_free_page(cmdline_cp);
+     return TID_ERROR;
+  }
+  strlcpy (file_name, cmdline, PGSIZE);
   // extract file name
   char *saveptr;
-  file_name = strtok_r(cmdline, " \t\n", &saveptr); // cmdline will only contain the file name now
+  strtok_r(file_name, " ", &saveptr); // file_name will only contain the file name now
 
   /* Create a new thread to execute the executable. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, cmdline_cp);
-
+  struct pcb_t *pcb;
   if (tid == TID_ERROR) {
      palloc_free_page (cmdline_cp);
   }
   else {  // if child wasn't created, sema wouldn't have been inited
      struct thread *child = get_thread_by_tid(tid);  // get the newly created thread
      list_push_back(&cur->child_list, &child->pcb->elem);  // add the new child to parent's child list
-     sema_init(&child->pcb->process_wait_sema, 0);  // think should init here, cuz only necessary to wait when process_wait is called
-     sema_down(&child->pcb->process_exec_sema);  // sema inited in thread_create
+     pcb = child->pcb; // if child is killed, sema still needs access properly, so have a separate pointer for pcb is necessary
+     sema_init(&pcb->process_wait_sema, 0);  // think should init here, cuz only necessary to wait when process_wait is called
+     sema_down(&pcb->process_exec_sema);  // sema inited in thread_create
  }
-
+  palloc_free_page (file_name);
+  if (pcb->exit_status == -1) return -1;
   return tid;
 }
 
@@ -96,8 +108,8 @@ static void start_process (void *command_) {
       // while (argv[argc] = strtok_r(NULL, " ", &saveptr) != NULL)  argc++;  // this way, terminated with NULL
       for (char *token = strtok_r(command, " ", &saveptr); token != NULL;
       token = strtok_r(NULL, " ", &saveptr))
-
          argv[argc++] = token;
+      if (argv[argc-1] != NULL) argv[argc] = NULL;  // must terminate by NULL; this is needed for exec-arg test case
       success = load (argv, argc, &if_.eip, &if_.esp);
    }
 
