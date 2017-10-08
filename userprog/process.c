@@ -67,50 +67,58 @@ tid_t process_execute (const char *cmdline) {
 }
 
 /*
-   A thread function that loads a user process and starts it running.
-   Since already inside the thread, only need to pass the command (which is not contained in struct thread)
-   Note commend_ includes the command/file name
+A thread function that loads a user process and starts it running.
+Since already inside the thread, only need to pass the command (which is not contained in struct thread)
+Note commend_ includes the command/file name
 */
 static void start_process (void *command_) {
-  char *command = command_;
-  struct intr_frame if_;
-  bool success;
-  struct thread *cur = thread_current();
-  // lock_init(&pid_lock);
-  // thread_current()->pid = allocate_pid();
-  /* Initialize interrupt frame and load executable. */
-  memset (&if_, 0, sizeof if_);
-  if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
-  if_.cs = SEL_UCSEG;
-  if_.eflags = FLAG_IF | FLAG_MBS;
+   char *command = command_;
+   struct intr_frame if_;
+   bool success = false;
+   struct thread *cur = thread_current();
+   // lock_init(&pid_lock);
+   // thread_current()->pid = allocate_pid();
+   /* Initialize interrupt frame and load executable. */
+   memset (&if_, 0, sizeof if_);
+   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
+   if_.cs = SEL_UCSEG;
+   if_.eflags = FLAG_IF | FLAG_MBS;
 
-  // extract the filename
-  char **argv = (const char**) palloc_get_page(0); // allocate kernel space for temp usage, will later be freed
-  int argc = 0;
-  char *saveptr;
-  argv[argc++] = strtok_r(command, " \t\n", &saveptr);
-  while (argv[argc] = strtok_r(NULL, " \t\n", &saveptr) != NULL)  argc++;  // this way, terminated with NULL
+   // extract the filename
+   char **argv = (const char**) palloc_get_page(0); // allocate kernel space for temp usage, will later be freed
+   if (argv == NULL) {
+      printf("[Error] Kernel Error: Not enough memory\n");
+   }
+   else {
+      int argc = 0;
+      char *saveptr;
+      // argv[argc++] = strtok_r(command, " ", &saveptr);
+      // while (argv[argc] = strtok_r(NULL, " ", &saveptr) != NULL)  argc++;  // this way, terminated with NULL
+      for (char *token = strtok_r(command, " ", &saveptr); token != NULL;
+      token = strtok_r(NULL, " ", &saveptr))
 
-  success = load (argv, argc, &if_.eip, &if_.esp);
+         argv[argc++] = token;
+      success = load (argv, argc, &if_.eip, &if_.esp);
+   }
 
-  sema_up(&cur->pcb->process_exec_sema);
+   sema_up(&cur->pcb->process_exec_sema);
 
-  palloc_free_page(argv);  // args already pushed to user stack, so can free them here
-  palloc_free_page(command);
-  /* If load failed, quit. */
-  if (!success) {
-     cur->pcb->exit_status = -1;  // kernel terminate the process, so exit code is -1
-     thread_exit();  // will destory this thread, while keeping its pcb
- }
+   palloc_free_page(argv);  // args already pushed to user stack, so can free them here
+   palloc_free_page(command);
+   /* If load failed, quit. */
+   if (!success) {
+      cur->pcb->exit_status = -1;  // kernel terminate the process, so exit code is -1
+      thread_exit();  // will destory this thread, while keeping its pcb
+   }
 
-  /* Start the user process by simulating a return from an
-     interrupt, implemented by intr_exit (in
-     threads/intr-stubs.S).  Because intr_exit takes all of its
-     arguments on the stack in the form of a `struct intr_frame',
-     we just point the stack pointer (%esp) to our stack frame
-     and jump to it. */
-  asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
-  NOT_REACHED ();
+   /* Start the user process by simulating a return from an
+   interrupt, implemented by intr_exit (in
+   threads/intr-stubs.S).  Because intr_exit takes all of its
+   arguments on the stack in the form of a `struct intr_frame',
+   we just point the stack pointer (%esp) to our stack frame
+   and jump to it. */
+   asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
+   NOT_REACHED ();
 }
 
 /* Waits for thread TID to die and returns its exit status.  If
