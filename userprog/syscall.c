@@ -1,3 +1,4 @@
+#include "userprog/syscall.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <syscall-nr.h>
@@ -66,8 +67,10 @@ struct file_info {
  */
 void syscall_init(void) {
     fd_num = 2;
+    list_init(&ofl);
     lock_init(&filesys_lock);
     intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall");
+
 }
 
 /*
@@ -222,7 +225,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
             // get fd
             int fd;
             user_mem_read(&fd, sp, sizeof (fd));
-            // syscall, no return
+            //syscall, no return
             sys_close(fd);
             break;
         }
@@ -296,7 +299,7 @@ static void verify_string(const char *ptr) {
 /*Iterate through current file list to find the file_info pointer*/
 struct file_info* find_file_info(int fd) {
     for (ln = list_begin(&ofl); ln != list_end(&ofl); ln = list_next(ln)) {
-        struct file_info* fi = list_entry(ln, struct file_info, elem);
+        struct file_info* fi = list_entry(ln, struct file_info, e);
         if (fd == fi->fd) {
             return fi;
         }
@@ -455,7 +458,7 @@ bool sys_remove(const char* file) {
     struct file *f = filesys_open(file);
     if (f == NULL) return;
 
-    ASSERT(!lock_held_by_current_thread(&filesys_lock));
+    //ASSERT(!lock_held_by_current_thread(&filesys_lock));
     lock_acquire(&filesys_lock);
     bool result = filesys_remove(file);
     lock_release(&filesys_lock);
@@ -472,6 +475,7 @@ bool sys_remove(const char* file) {
  * Description: opens the file called file.
  */
 int sys_open(const char* file) {
+    
 
     verify_string(file);
     lock_acquire(&filesys_lock);
@@ -482,16 +486,14 @@ int sys_open(const char* file) {
     }
     /*TO DO: push id to thread and increment thread fd*/
     struct thread *t = thread_current();
-
-
-
-
-
-
+    
+    /*Push file into list*/
+    list_push_back(&file_record, &(file_record->e));
 
     /*increment file descriptor amount*/
     fd_num += 1;
 
+    lock_release(&filesys_lock);
     return fd_num - 1;
 
 }
@@ -531,6 +533,7 @@ int sys_filesize(int fd) {
  */
 int sys_read(int fd, void* buffer, unsigned size) {
 
+
 }
 
 /*
@@ -564,6 +567,16 @@ int sys_write(int fd, const void* buffer, unsigned size) {
  *     in bytes from the beginning of the file. (Thus, a position of 0 is the file's start.)
  */
 void sys_seek(int fd, unsigned position) {
+
+
+    lock_acquire(&filesys_lock);
+    struct file_info* f = find_file_info(f);
+    if (f == NULL) {
+        lock_release(&filesys_lock);
+        return;
+    }
+    file_seek(f->file, position);
+    lock_release(&filesys_lock);
 }
 
 /*
@@ -576,6 +589,19 @@ void sys_seek(int fd, unsigned position) {
  */
 unsigned sys_tell(int fd) {
 
+    lock_acquire(&filesys_lock);
+    int tell;
+    struct file_info* fp = find_file_info(fd);
+
+    if (fp == NULL) {
+        lock_release(&filesys_lock);
+        return;
+    }
+
+    tell = file_tell(fp->file);
+    lock_release(&filesys_lock);
+    return tell;
+
 }
 
 /*
@@ -584,5 +610,28 @@ unsigned sys_tell(int fd) {
  * Description: closes file descriptor fd.
  */
 void sys_close(int fd) {
+
+
+    lock_acquire(&filesys_lock);
+
+    struct file_info* f = find_file_info(fd);
+
+    /*File non existent*/
+    if (f == NULL) {
+        lock_release(&filesys_lock);
+        return;
+    }
+
+    /*If file is part of the thread*/
+    if (f->tid == thread_current()->tid) {
+        file_close(f->file);
+        list_remove(&(f->e));
+        free(f->str);
+        free(f);
+    }
+
+    lock_release(&filesys_lock);
+
+    return;
 
 }
