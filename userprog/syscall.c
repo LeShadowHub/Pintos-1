@@ -6,6 +6,7 @@
 #include "threads/vaddr.h"
 #include "threads/synch.h"
 #include "devices/shutdown.h"
+#include "filesys/filesys.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -19,7 +20,7 @@ static bool sys_remove (const char* file);
 static int sys_open (const char* file);
 static int sys_filesize (int fd);
 static int sys_read (int fd, void* buffer, unsigned size);
-static int sys_write (int fd, const void* buffer, unsigned length);
+static int sys_write (int fd, const void* buffer, unsigned size);
 static void sys_seek (int fd, unsigned position);
 static unsigned sys_tell (int fd);
 static void sys_close (int fd);
@@ -29,6 +30,7 @@ static void user_mem_read(void* dest_addr, void* uaddr, size_t size);
 static int user_mem_read_byte (const uint8_t *uaddr);
 static bool user_mem_write_byte (uint8_t *dest, uint8_t byte);
 static void invalid_user_access(void);
+static void verify_string(const char *ptr);
 
 static struct lock filesys_lock;
 
@@ -94,38 +96,56 @@ static void syscall_handler (struct intr_frame* f UNUSED) {
       /* Create a file. */
       case SYS_CREATE:
       {
-         // syscall, return bool
-         // f->eax = sys_create (const char* file, unsigned initial_size);
+         const char* file;
+         unsigned initial_size;
+         user_mem_read(&file, sp, sizeof(file));
+         sp = (char *) sp + 1;
+         user_mem_read(&initial_size, sp, sizeof(initial_size));
+         f->eax = sys_create (file, initial_size);
          break;
       }
 
       /* Delete a file. */
       case SYS_REMOVE:
       {
-         // syscall, return bool
-         // f->eax = sys_remove (const char* file);
+         const char* file;
+         user_mem_read(&file, sp, sizeof(file));
+         f->eax = sys_remove (file);
          break;
       }
 
       /* Open a file. */
       case SYS_OPEN:
       {
-         // syscall, return int
-         // f->eax = sys_open (const char* file);
+         const char* file;
+         user_mem_read(&file, sp, sizeof(file));
+         f->eax = sys_open (file);
          break;
       }
       /* Obtain a file's size. */
       case SYS_FILESIZE:
       {
+         int fd;
+         user_mem_read(&fd, sp, sizeof(fd));
          // syscall, return int
-         // f->eax = sys_filesize (int fd);
+         f->eax = sys_filesize (fd);
          break;
       }
       /* Read from a file. */
       case SYS_READ:
       {
+         int fd;
+         user_mem_read(&fd, sp, sizeof(fd));
+         sp = (int *) sp + 1;
+         // get buffer address
+         void *buffer;
+         user_mem_read(&buffer, sp, sizeof(buffer));
+         sp = (void **) sp + 1;
+         // get size
+         unsigned size;
+         user_mem_read(&size, sp, sizeof(size));
          // syscall, return int
-         //f->eax = sys_read (int fd, void* buffer, unsigned length);
+         f->eax = sys_read (fd, buffer, size);
          break;
       }
       /* Write to a file. */
@@ -134,7 +154,7 @@ static void syscall_handler (struct intr_frame* f UNUSED) {
          // get fd
          int fd;
          user_mem_read(&fd, sp, sizeof(fd));
-         sp = (uint32_t *) sp + 1;
+         sp = (int *) sp + 1;
          // get buffer address
          void *buffer;
          user_mem_read(&buffer, sp, sizeof(buffer));
@@ -150,8 +170,13 @@ static void syscall_handler (struct intr_frame* f UNUSED) {
       /* Change position in a file. */
       case SYS_SEEK:
       {
-         // syscall, no return
-         // sys_seek (int fd, unsigned position);
+         int fd;
+         user_mem_read(&fd, sp, sizeof(fd));
+         sp = (int *) sp + 1;
+         unsigned position;
+         user_mem_read(&position, sp, sizeof(position));
+
+         sys_seek (fd, position);
          break;
       }
 
@@ -159,8 +184,10 @@ static void syscall_handler (struct intr_frame* f UNUSED) {
       case SYS_TELL:
       {
          int fd;
+         user_mem_read(&fd, sp, sizeof(fd));
+
          // syscall, return
-         // sys_tell (fd);
+         sys_tell (fd);
          break;
       }
 
@@ -217,12 +244,27 @@ static void user_mem_read(void* dest_addr, void* uaddr, size_t size) {
    if (uaddr == NULL || !is_user_vaddr(uaddr)) invalid_user_access();
    // read
    for (unsigned int i = 0; i < size; i++) {
-      // read a byte from memory
       int byte_data = user_mem_read_byte(uaddr + i) ;
       // if byte_data = -1, the last memory read was a segment fault
       if (byte_data == -1) invalid_user_access();
       // save this byte of data to destination address
       *(uint8_t*)(dest_addr + i) = byte_data & 0xFF;
+   }
+}
+
+
+/*
+check if the provided char pointer is a valid
+every char in string must be in user space, and must be in a page thats mapped
+*/
+static void verify_string(const char *ptr) {
+   if (ptr == NULL || !is_user_vaddr(ptr)) invalid_user_access();
+
+   while (true) {
+      char byte = user_mem_read_byte (ptr);
+      if (byte == -1)  invalid_user_access();
+      else if (byte == '\0')   return;
+      ptr++;
    }
 }
 
@@ -310,10 +352,8 @@ pid_t sys_exec (const char* cmdline) {
    /* check whether cmdline is a valid address
       since when we get cmdline, we check the pointer whose content is this
       cmdline pointer, need to check whether the actual cmdline ptr is valid
-      will use user_mem_read here since it fullfills the need
    */
-   void * dummy;
-   user_mem_read(&dummy, cmdline, sizeof(dummy));
+   verify_string(cmdline);
 
    lock_acquire(&filesys_lock);  // in load(), file system is used
    pid_t pid = process_execute(cmdline);
@@ -338,22 +378,6 @@ int sys_wait(pid_t pid) {
    return status;
 }
 
-/*Check if filename is valid*/
-static void check_file_string(const char*file){
-    /*Check if filename is valid*/
-    char* fp = file;
-    while (true)
-    {
-        int result = user_mem_read_byte ((unsigned char*)file);
-        if (result == -1){
-            thread_exit ();
-        }
-        else if ((char)result == '\0')
-            return;
-        fp++;
-    }
-    
-}
 
 /*
 * bool sys_create (const char* file, unsigned initial_size)
@@ -365,7 +389,7 @@ static void check_file_string(const char*file){
 */
 bool sys_create (const char* file, unsigned initial_size) {
 
-    check_file_string(file);
+    verify_string(file);
     /* TO DO:
      * NEED TO CHECK IF CURRENT DIR IS MARKED FOR DELETION
      */
@@ -373,7 +397,7 @@ bool sys_create (const char* file, unsigned initial_size) {
     bool result = filesys_create (file, initial_size);
     lock_release(&filesys_lock);
     return result;
-   
+
 }
 
 /*
@@ -386,18 +410,18 @@ bool sys_create (const char* file, unsigned initial_size) {
 */
 bool sys_remove (const char* file) {
 
-    check_file_string(file);
-    
+    verify_string(file);
+
     /*Check if file exists*/
     struct file *f= filesys_open(file);
     if(f == NULL) return;
-    filesys_close(file);
-   
+    //filesys_close(file);
+
     lock_acquire(&filesys_lock);
     bool result = filesys_remove(file);
     lock_release(&filesys_lock);
     return result;
-   
+
 }
 
 /*
@@ -409,7 +433,7 @@ bool sys_remove (const char* file) {
 * Description: opens the file called file.
 */
 int sys_open (const char* file) {
-   check_file_string(file);
+   verify_string(file);
 
 }
 
@@ -435,7 +459,7 @@ int sys_filesize (int fd) {
 * Description: reads size bytes from the file open as fd into buffer. Fd 0 reads from
 *     the keyboard using input_getc().
 */
-int sys_read (int fd, void* buffer, unsigned length) {
+int sys_read (int fd, void* buffer, unsigned size) {
 
 }
 
@@ -452,6 +476,8 @@ int sys_read (int fd, void* buffer, unsigned length) {
 *     at least as long as size is not bigger than a few hundred bytes.
 */
 int sys_write (int fd, const void* buffer, unsigned size) {
+   // TO DO ...
+
    if (fd == 1) {
       putbuf(buffer, size);
       return size;
