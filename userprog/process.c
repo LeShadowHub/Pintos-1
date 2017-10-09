@@ -144,7 +144,7 @@ static void start_process (void *command_) {
    does nothing. */
 int process_wait (tid_t child_tid) {
    struct thread *cur = thread_current();
-   struct list child_list = cur->child_list;
+   struct list *child_list = &cur->child_list;  // must use pointer !! otherwise memory optimize out cur for some reason (maybe not enough memory)
    struct pcb_t *child;
    struct list_elem *e;  // used to find child thread
    int child_exit_status;
@@ -153,14 +153,14 @@ int process_wait (tid_t child_tid) {
    if (child_tid == TID_ERROR) return -1;
 
    // find the child thread specified by child_tid
-   for (e = list_begin (&child_list); e != list_end (&child_list);
+   for (e = list_begin (child_list); e != list_end (child_list);
       e = list_next (e)) {
       // convert list_element into the pcb_t that contains it
       child = list_entry(e, struct pcb_t, elem);
       if (child->pid == child_tid) break; // found child
    }
 
-   if (e == list_end(&child_list)) return -1;  // child_tid is not a child of current process
+   if (e == list_end(child_list)) return -1;  // child_tid is not a child of current process
    if (child->already_wait) return -1;    // wait() or process_wait() already called upon this child
    else child->already_wait = 1; // mark wait() already called
 
