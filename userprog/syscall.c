@@ -487,8 +487,8 @@ int sys_open(const char* file) {
     /*TO DO: push id to thread and increment thread fd*/
     struct thread *t = thread_current();
     
-    /*Push file into list*/
-    list_push_back(&file_record, &(file_record->e));
+    
+    
 
     /*increment file descriptor amount*/
     fd_num += 1;
