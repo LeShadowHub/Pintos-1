@@ -74,7 +74,7 @@ tid_t process_execute (const char *cmdline) {
      sema_down(&pcb->process_exec_sema);  // sema inited in thread_create
  }
   palloc_free_page (file_name);
-  if (pcb->exit_status == -1) return -1;
+  if (pcb->exit_status == -1) return -1;  // child was killed by kernel during creation
   return tid;
 }
 
@@ -98,7 +98,9 @@ static void start_process (void *command_) {
    // extract the filename
    char **argv = (const char**) palloc_get_page(0); // allocate kernel space for temp usage, will later be freed
    if (argv == NULL) {
-      printf("[Error] Kernel Error: Not enough memory\n");
+      cur->pcb->exit_status = -1;  // kernel terminate the process, so exit code is -1
+      printf("%s: exit(%d)\n", cur->name, cur->pcb->exit_status);
+      thread_exit();  // will destory this thread, while keeping its pcb
    }
    else {
       int argc = 0;
@@ -112,6 +114,11 @@ static void start_process (void *command_) {
       success = load (argv, argc, &if_.eip, &if_.esp);
    }
 
+   // deny write to the current running executable
+   cur->pcb->executable = filesys_open(argv[0]);
+   if (cur->pcb->executable != NULL)
+      file_deny_write(cur->pcb->executable);
+
    sema_up(&cur->pcb->process_exec_sema);
 
    palloc_free_page(argv);  // args already pushed to user stack, so can free them here
@@ -119,6 +126,7 @@ static void start_process (void *command_) {
    /* If load failed, quit. */
    if (!success) {
       cur->pcb->exit_status = -1;  // kernel terminate the process, so exit code is -1
+      printf("%s: exit(%d)\n", cur->name, cur->pcb->exit_status);
       thread_exit();  // will destory this thread, while keeping its pcb
    }
 
@@ -204,6 +212,13 @@ void process_exit (void) {
    // if this thread is an orphan, can free its pcb it right now; thread itself will be freed upon return
    if (cur->pcb->orphan) palloc_free_page(cur->pcb);
 
+   // allow write to the current executable again if opened successfully
+   if (cur->pcb->executable != NULL) {
+      file_allow_write(cur->pcb->executable);
+      file_close(cur->pcb->executable);
+   }
+
+
    /* Destroy the current process's page directory and switch back
    to the kernel-only page directory. */
    pd = cur->pagedir;
@@ -220,6 +235,9 @@ void process_exit (void) {
       pagedir_activate (NULL);
       pagedir_destroy (pd);
    }
+
+
+
 }
 
 

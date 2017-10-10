@@ -3,6 +3,7 @@
 
 #include "threads/synch.h"
 #include "threads/thread.h"
+#include "filesys/file.h"
 /* Process identifier. */
 typedef int pid_t;
 #define PID_ERROR ((pid_t) -1)
@@ -19,7 +20,7 @@ struct pcb_t {
    int orphan;                         // 0 or 1; whether its parent has exited
    // orphan means it will never be called wait() upon, so when it exits, it needs to be freed
    // otherwise, the parent process needs to free it at the end of process_wait()
-
+   struct file *executable;            // the current executable file
    struct list_elem elem;              // element in child_list
    struct semaphore process_exec_sema; // used in process_execute and start_process
    struct semaphore process_wait_sema;  // used in process_wait and process_exit
@@ -39,3 +40,4 @@ void process_exit (void);
 void process_activate (void);
 
 #endif /* userprog/process.h */
+
