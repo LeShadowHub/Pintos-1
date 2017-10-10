@@ -42,35 +42,20 @@ static int user_mem_read_byte(const uint8_t *uaddr);
 static bool user_mem_write_byte(uint8_t *dest, uint8_t byte);
 static void invalid_user_access(void);
 static void verify_string(const char *ptr);
+static void verify_dest(void *dest, unsigned size);
+/************************ File Table Helper Functions ************************/
+static struct file_table_entry* get_file_table_entry_by_fd(int fd);
+static int add_to_file_table (struct file_table_entry *fte, struct file *f);
 
 static struct lock filesys_lock;
-
-/*fd_num stores current fd, ln stores list */
-unsigned fd_num;
-struct list_elem* ln;
-/*opened file list*/
-struct list ofl;
-
-/*Info of current file*/
-struct file_info {
-    struct list_elem e;
-    unsigned h_num;
-    char* str;
-    struct file* file;
-    int fd;
-    tid_t tid;
-};
 
 /*
  * void syscall_init (void)
  * Description: system call initialization.
  */
 void syscall_init(void) {
-    fd_num = 2;
-    list_init(&ofl);
     lock_init(&filesys_lock);
     intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall");
-
 }
 
 /*
@@ -80,12 +65,9 @@ void syscall_init(void) {
  * Description:
  */
 static void syscall_handler(struct intr_frame* f UNUSED) {
-    // copy the stack pointer
-    void* sp = f->esp;
     // get syscall number
     uint32_t syscall_num;
-    user_mem_read(&syscall_num, sp, sizeof (syscall_num));
-    sp = (uint32_t *) sp + 1; // increment stack pointer
+    user_mem_read(&syscall_num, f->esp, sizeof (syscall_num));
 
     // excute syscall according to syscall number
     switch (syscall_num) {
@@ -100,7 +82,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
         {
             // get status from stack
             int status;
-            user_mem_read(&status, sp, sizeof (status));
+            user_mem_read(&status, f->esp + 4, sizeof (status));
             sys_exit(status);
             break;
         }
@@ -108,7 +90,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
         case SYS_EXEC:
         {
             char *cmdline;
-            user_mem_read(&cmdline, sp, sizeof (cmdline));
+            user_mem_read(&cmdline, f->esp + 4, sizeof (cmdline));
             // syscall, return pid_t
             f->eax = sys_exec(cmdline);
             break;
@@ -118,7 +100,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
         case SYS_WAIT:
         {
             pid_t pid;
-            user_mem_read(&pid, sp, sizeof (pid));
+            user_mem_read(&pid, f->esp + 4, sizeof (pid));
             f->eax = sys_wait(pid);
             break;
         }
@@ -128,9 +110,8 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
         {
             const char* file;
             unsigned initial_size;
-            user_mem_read(&file, sp, sizeof (file));
-            sp = (char *) sp + 1;
-            user_mem_read(&initial_size, sp, sizeof (initial_size));
+            user_mem_read(&file, f->esp + 4, sizeof (file));
+            user_mem_read(&initial_size, f->esp + 8, sizeof (initial_size));
             f->eax = sys_create(file, initial_size);
             break;
         }
@@ -139,7 +120,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
         case SYS_REMOVE:
         {
             const char* file;
-            user_mem_read(&file, sp, sizeof (file));
+            user_mem_read(&file, f->esp + 4, sizeof (file));
             f->eax = sys_remove(file);
             break;
         }
@@ -148,7 +129,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
         case SYS_OPEN:
         {
             const char* file;
-            user_mem_read(&file, sp, sizeof (file));
+            user_mem_read(&file, f->esp + 4, sizeof (file));
             f->eax = sys_open(file);
             break;
         }
@@ -156,7 +137,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
         case SYS_FILESIZE:
         {
             int fd;
-            user_mem_read(&fd, sp, sizeof (fd));
+            user_mem_read(&fd, f->esp + 4, sizeof (fd));
             // syscall, return int
             f->eax = sys_filesize(fd);
             break;
@@ -165,15 +146,13 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
         case SYS_READ:
         {
             int fd;
-            user_mem_read(&fd, sp, sizeof (fd));
-            sp = (int *) sp + 1;
+            user_mem_read(&fd, f->esp + 4, sizeof (fd));
             // get buffer address
             void *buffer;
-            user_mem_read(&buffer, sp, sizeof (buffer));
-            sp = (void **) sp + 1;
+            user_mem_read(&buffer, f->esp + 8, sizeof (buffer));
             // get size
             unsigned size;
-            user_mem_read(&size, sp, sizeof (size));
+            user_mem_read(&size, f->esp + 12, sizeof (size));
             f->eax = sys_read(fd, buffer, size);
             break;
         }
@@ -182,15 +161,13 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
         {
             // get fd
             int fd;
-            user_mem_read(&fd, sp, sizeof (fd));
-            sp = (int *) sp + 1;
+            user_mem_read(&fd, f->esp + 4, sizeof (fd));
             // get buffer address
             void *buffer;
-            user_mem_read(&buffer, sp, sizeof (buffer));
-            sp = (void **) sp + 1;
+            user_mem_read(&buffer, f->esp + 8, sizeof (buffer));
             // get size
             unsigned size;
-            user_mem_read(&size, sp, sizeof (size));
+            user_mem_read(&size, f->esp + 12, sizeof (size));
             // syscall, return int
             f->eax = sys_write(fd, buffer, size);
             break;
@@ -200,10 +177,9 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
         case SYS_SEEK:
         {
             int fd;
-            user_mem_read(&fd, sp, sizeof (fd));
-            sp = (int *) sp + 1;
+            user_mem_read(&fd, f->esp + 4, sizeof (fd));
             unsigned position;
-            user_mem_read(&position, sp, sizeof (position));
+            user_mem_read(&position, f->esp + 8, sizeof (position));
 
             sys_seek(fd, position);
             break;
@@ -214,7 +190,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
         {
 
             int fd;
-            user_mem_read(&fd, sp, sizeof (fd));
+            user_mem_read(&fd, f->esp + 4, sizeof (fd));
             sys_tell(fd);
             break;
         }
@@ -222,9 +198,8 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
             /* Close a file. */
         case SYS_CLOSE:
         {
-            // get fd
             int fd;
-            user_mem_read(&fd, sp, sizeof (fd));
+            user_mem_read(&fd, f->esp + 4, sizeof (fd));
             //syscall, no return
             sys_close(fd);
             break;
@@ -253,101 +228,6 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     }
 
 }
-
-/************************ Memory Access Functions Implementation ************************/
-
-/*
- * void user_mem_read(void* dest_addr, void* uaddr, size_t size)
- *     - Parameters:
- *         - dest_addr: destination address to save the result of memory read.
- *         - uaddr: starting memory location to be read from.
- *         - size: number of bytes to be read.
- * Description: As part of a system call, the kernel must often access memory through
- *     pointers provided by a user program. The kernel must be very careful about doing so,
- *     because the user can pass a null pointer, a pointer to unmapped virtual memory, or a
- *     pointer to kernel virtual address space (above PHYS_BASE).
- */
-static void user_mem_read(void* dest_addr, void* uaddr, size_t size) {
-    // uaddr must be below PHYS_BASE and must not be NULL pointer
-    if (uaddr == NULL || !is_user_vaddr(uaddr)) invalid_user_access();
-    // read
-    for (unsigned int i = 0; i < size; i++) {
-        // read a byte from memory
-        int byte_data = user_mem_read_byte(uaddr + i);
-        // if byte_data = -1, the last memory read was a segment fault
-        if (byte_data == -1) invalid_user_access();
-        // save this byte of data to destination address
-        *(uint8_t*) (dest_addr + i) = byte_data & 0xFF;
-    }
-}
-
-/*
-check if the provided char pointer is a valid
-every char in string must be in user space, and must be in a page thats mapped
- */
-static void verify_string(const char *ptr) {
-    if (ptr == NULL || !is_user_vaddr(ptr)) invalid_user_access();
-
-    while (true) {
-        char byte = user_mem_read_byte(ptr);
-        if (byte == -1) invalid_user_access();
-        else if (byte == '\0') return;
-        ptr++;
-    }
-}
-
-/*Iterate through current file list to find the file_info pointer*/
-struct file_info* find_file_info(int fd) {
-    for (ln = list_begin(&ofl); ln != list_end(&ofl); ln = list_next(ln)) {
-        struct file_info* fi = list_entry(ln, struct file_info, e);
-        if (fd == fi->fd) {
-            return fi;
-        }
-    }
-    return NULL;
-}
-
-/*
- * int user_mem_read_byte (const uint8_t* uaddr)
- *     - Parameters:
- *         - uaddr: address in user space to be read.
- *     - Return: the byte value if successful, -1 if a segfault occurred.
- * Description: Reads a byte at user virtual address uaddr.
- *     uaddr must be below PHYS_BASE.
- *     uaddr points to a byte of memory.
- */
-static int user_mem_read_byte(const uint8_t* uaddr) {
-    int result;
-    asm ("movl $1f, %0; movzbl %1, %0; 1:"
-                : "=&a" (result) : "m" (*uaddr));
-    return result;
-}
-
-/*
- * bool user_mem_write_byte (uint8_t* dest, uint8_t byte)
- *     - Parameters:
- *         - dest_addr: destination address for writing.
- *         - byte: byte of data to be written.
- *     - Return: true if successful, false if a segfault occurred.
- * Description: writes a byte to user address dest_addr.
- *     dest_addr must be below PHYS_BASE.
- */
-static bool user_mem_write_byte(uint8_t* dest_addr, uint8_t byte) {
-    int error_code;
-    asm ("movl $1f, %0; movb %b2, %1; 1:"
-                : "=&a" (error_code), "=m" (*dest_addr) : "q" (byte));
-    return error_code != -1;
-}
-
-/*
- * void invalid_user_access()
- * Description: for now just exits with status -1
- *     how to free memory and release lock?
- */
-static void invalid_user_access() {
-    sys_exit(-1);
-}
-
 
 /************************ System Call Implementation ************************/
 
@@ -430,7 +310,6 @@ int sys_wait(pid_t pid) {
  */
 
 bool sys_create(const char* file, unsigned initial_size) {
-    if (file == NULL) return;
     verify_string(file);
     /* TO DO:
      * NEED TO CHECK IF CURRENT DIR IS MARKED FOR DELETION
@@ -454,10 +333,6 @@ bool sys_remove(const char* file) {
     /*Check if filename is valid*/
     verify_string(file);
 
-    /*Check if file exists*/
-    struct file *f = filesys_open(file);
-    if (f == NULL) return;
-
     //ASSERT(!lock_held_by_current_thread(&filesys_lock));
     lock_acquire(&filesys_lock);
     bool result = filesys_remove(file);
@@ -475,27 +350,20 @@ bool sys_remove(const char* file) {
  * Description: opens the file called file.
  */
 int sys_open(const char* file) {
-    
-
     verify_string(file);
+    struct file_table_entry *fte = palloc_get_page(0);
+    if (!fte) return -1;  // memory allocation failed
+
     lock_acquire(&filesys_lock);
     struct file *f = filesys_open(file);
-    if (f == NULL) {
+    if (f == NULL) {   // file not successfully opened
         lock_release(&filesys_lock);
+        palloc_free_page(fte);
         return -1;
     }
-    /*TO DO: push id to thread and increment thread fd*/
-    struct thread *t = thread_current();
-    
-    
-    
-
-    /*increment file descriptor amount*/
-    fd_num += 1;
-
     lock_release(&filesys_lock);
-    return fd_num - 1;
 
+    return add_to_file_table(fte, f); // returns the fd
 }
 
 /*
@@ -508,14 +376,12 @@ int sys_open(const char* file) {
 int sys_filesize(int fd) {
     int size;
     lock_acquire(&filesys_lock);
-
-    struct file_info* fp = find_file_info(fd);
-    if (fp == NULL) {
+    struct file_table_entry* fte = get_file_table_entry_by_fd(fd);
+    if (fte == NULL) {
         lock_release(&filesys_lock);
-        return 0;
+        return -1;  // return -1 if no such entry? not sepcified
     }
-    size = file_length(fp->file);
-
+    size = file_length(fte->file);
     lock_release(&filesys_lock);
     return size;
 }
@@ -532,15 +398,37 @@ int sys_filesize(int fd) {
  *     the keyboard using input_getc().
  */
 int sys_read(int fd, void* buffer, unsigned size) {
+   verify_dest(buffer, size);
 
-
+   unsigned bytes_read;
+   lock_acquire(&filesys_lock);
+   if (fd == 0) {   // read from keyboard
+      for (unsigned i=0; i<size; i++) {
+         bool retval = user_mem_write_byte(buffer, input_getc());
+         if (!retval) {
+            lock_release(&filesys_lock);
+            invalid_user_access();
+         }
+      }
+      bytes_read = size;
+   }
+   else {      // read from opened file
+      struct file_table_entry *fte = get_file_table_entry_by_fd(fd);
+      if (fte == NULL) {
+         lock_release(&filesys_lock);
+         return -1;  // fd is not in the current thread's file table
+      }
+      bytes_read = file_read (fte->file, buffer, size);
+   }
+   lock_release(&filesys_lock);
+   return bytes_read;
 }
 
 /*
  * int sys_write (int fd, const void* buffer, unsigned size)
  *     - Parameters:
- *         - fd: file descriptor for the file to be writen.
- *         - buffer: buffer for data to be writen.
+ *         - fd: file descriptor for the file to be written.
+ *         - buffer: buffer for data to be written.
  *         - size: size of data to be written.
  *     - Return: the number of bytes actually written, which may be less than size
  *           if some bytes could not be written.
@@ -549,13 +437,25 @@ int sys_read(int fd, void* buffer, unsigned size) {
  *     at least as long as size is not bigger than a few hundred bytes.
  */
 int sys_write(int fd, const void* buffer, unsigned size) {
-    //TO DO...
+    verify_dest(buffer, size);
 
-    if (fd == 1) {
+    unsigned bytes_written;
+    lock_acquire(&filesys_lock);
+    if (fd == 1) {  // write to console
         putbuf(buffer, size);
+        lock_release(&filesys_lock);
         return size;
     }
-
+    else {  // write to a file
+      struct file_table_entry *fte = get_file_table_entry_by_fd(fd);
+      if (fte == NULL) {
+         lock_release(&filesys_lock);
+         return -1;  // fd is not in the current thread's file table
+      }
+      bytes_written = file_write (fte->file, buffer, size);
+   }
+   lock_release(&filesys_lock);
+   return bytes_written;
 }
 
 /*
@@ -567,15 +467,13 @@ int sys_write(int fd, const void* buffer, unsigned size) {
  *     in bytes from the beginning of the file. (Thus, a position of 0 is the file's start.)
  */
 void sys_seek(int fd, unsigned position) {
-
-
     lock_acquire(&filesys_lock);
-    struct file_info* f = find_file_info(f);
-    if (f == NULL) {
+    struct file_table_entry* fte = get_file_table_entry_by_fd(fd);
+    if (fte == NULL) {
         lock_release(&filesys_lock);
         return;
     }
-    file_seek(f->file, position);
+    file_seek(fte->file, position);
     lock_release(&filesys_lock);
 }
 
@@ -588,20 +486,16 @@ void sys_seek(int fd, unsigned position) {
  *     in bytes from the beginning of the file.
  */
 unsigned sys_tell(int fd) {
-
+    unsigned  tell;
     lock_acquire(&filesys_lock);
-    int tell;
-    struct file_info* fp = find_file_info(fd);
-
-    if (fp == NULL) {
+    struct file_table_entry* fte = get_file_table_entry_by_fd(fd);
+    if (fte == NULL) {
         lock_release(&filesys_lock);
-        return;
+        return -1;
     }
-
-    tell = file_tell(fp->file);
+    tell = file_tell(fte->file);
     lock_release(&filesys_lock);
     return tell;
-
 }
 
 /*
@@ -610,28 +504,153 @@ unsigned sys_tell(int fd) {
  * Description: closes file descriptor fd.
  */
 void sys_close(int fd) {
-
-
     lock_acquire(&filesys_lock);
-
-    struct file_info* f = find_file_info(fd);
-
-    /*File non existent*/
-    if (f == NULL) {
+    struct file_table_entry* fte = get_file_table_entry_by_fd(fd);
+    if (fte == NULL) {
         lock_release(&filesys_lock);
         return;
     }
 
-    /*If file is part of the thread*/
-    if (f->tid == thread_current()->tid) {
-        file_close(f->file);
-        list_remove(&(f->e));
-        free(f->str);
-        free(f);
-    }
+    file_close(fte->file);
+    list_remove(&fte->elem);
+    palloc_free_page(fte);
 
     lock_release(&filesys_lock);
-
-    return;
-
 }
+
+
+/************************ Memory Access Functions Implementation ************************/
+
+/*
+ * void user_mem_read(void* dest_addr, void* uaddr, size_t size)
+ *     - Parameters:
+ *         - dest_addr: destination address to save the result of memory read.
+ *         - uaddr: starting memory location to be read from.
+ *         - size: number of bytes to be read.
+ * Description: As part of a system call, the kernel must often access memory through
+ *     pointers provided by a user program. The kernel must be very careful about doing so,
+ *     because the user can pass a null pointer, a pointer to unmapped virtual memory, or a
+ *     pointer to kernel virtual address space (above PHYS_BASE).
+ */
+static void user_mem_read(void* dest_addr, void* uaddr, size_t size) {
+    // uaddr must be below PHYS_BASE and must not be NULL pointer
+    if (uaddr == NULL || !is_user_vaddr(uaddr)) invalid_user_access();
+    // read
+    for (unsigned int i = 0; i < size; i++) {
+        // read a byte from memory
+        int byte_data = user_mem_read_byte(uaddr + i);
+        // if byte_data = -1, the last memory read was a segment fault
+        if (byte_data == -1) invalid_user_access();
+        // save this byte of data to destination address
+        *(uint8_t*) (dest_addr + i) = byte_data & 0xFF;
+    }
+}
+
+/**********************************************************
+The main reason to have both verify_string and verify_dest
+is that one applies to KNOWN number of consecutive addresses
+the other does not, so have to look for the null terminator
+**********************************************************/
+
+/*
+check if the provided char pointer is a valid
+every char in string must be in user space, and must be in a page thats mapped
+ */
+static void verify_string(const char *ptr) {
+    if (ptr == NULL || !is_user_vaddr(ptr)) invalid_user_access();
+
+    while (true) {
+        char byte = user_mem_read_byte(ptr);
+        if (byte == -1) invalid_user_access();
+        else if (byte == '\0') return;
+        ptr++;
+    }
+}
+
+/*
+   helper function for syscalls that writes to a user address
+   check if the SIZE addresses starting at DEST are all valid to write
+*/
+static void verify_dest(void *dest, unsigned size) {
+   for (unsigned i=0; i<size; i++) {
+      if (dest == NULL || !is_user_vaddr(dest)) invalid_user_access();
+      int byte_data = user_mem_read_byte(dest + i);
+      if (byte_data == -1) invalid_user_access();
+   }
+}
+
+/*
+ * int user_mem_read_byte (const uint8_t* uaddr)
+ *     - Parameters:
+ *         - uaddr: address in user space to be read.
+ *     - Return: the byte value if successful, -1 if a segfault occurred.
+ * Description: Reads a byte at user virtual address uaddr.
+ *     uaddr must be below PHYS_BASE.
+ *     uaddr points to a byte of memory.
+ */
+static int user_mem_read_byte(const uint8_t* uaddr) {
+    int result;
+    asm ("movl $1f, %0; movzbl %1, %0; 1:"
+                : "=&a" (result) : "m" (*uaddr));
+    return result;
+}
+
+/*
+ * bool user_mem_write_byte (uint8_t* dest, uint8_t byte)
+ *     - Parameters:
+ *         - dest_addr: destination address for writing.
+ *         - byte: byte of data to be written.
+ *     - Return: true if successful, false if a segfault occurred.
+ * Description: writes a byte to user address dest_addr.
+ *     dest_addr must be below PHYS_BASE.
+ */
+static bool user_mem_write_byte(uint8_t* dest_addr, uint8_t byte) {
+    int error_code;
+    asm ("movl $1f, %0; movb %b2, %1; 1:"
+                : "=&a" (error_code), "=m" (*dest_addr) : "q" (byte));
+    return error_code != -1;
+}
+
+/*
+ * void invalid_user_access()
+ * Description: for now just exits with status -1
+ *     how to free memory and release lock?
+ */
+static void invalid_user_access() {
+    sys_exit(-1);
+}
+
+/************************ File Table Helper Functions ************************/
+
+/*
+   add the given file table entry to current thread's file table
+   return: fd of the entry
+*/
+static int add_to_file_table (struct file_table_entry *fte, struct file *f) {
+   struct thread *cur = thread_current();
+   struct list *file_table = &cur->file_table;
+   fte->file = f;
+   if (list_empty(file_table)) fte->fd = 3;       // 0, 1, 2 reserved
+   else {
+      struct file_table_entry *back = list_entry(list_back(file_table), struct file_table_entry, elem); // the last opened file
+      fte->fd = back->fd + 1;
+   }
+   list_push_back(file_table, &fte->elem);
+   return fte->fd;
+}
+
+/*Iterate through current file table to find the file_table_entry pointer*/
+static struct file_table_entry* get_file_table_entry_by_fd(int fd) {
+   struct thread *cur = thread_current();
+   struct list *file_table = &cur->file_table;
+   struct file_table_entry *fte;
+   struct list_elem *e;
+   for (e = list_begin(file_table); e != list_end(file_table); e = list_next(file_table)) {
+      fte = list_entry(e, struct file_table_entry, elem);
+      if (fte->fd == fd) {
+         return fte;
+      }
+   }
+   return NULL;
+}
+

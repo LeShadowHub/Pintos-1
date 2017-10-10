@@ -100,7 +100,7 @@ struct thread
     uint32_t *pagedir;                  /* Page directory. */
     struct pcb_t *pcb;
     struct list child_list;             // its elements are children's PCBs
-
+    struct list file_table;
 #endif
 
     /* Owned by thread.c. */
@@ -147,4 +147,3 @@ int thread_get_load_avg (void);
 struct thread * get_thread_by_tid(tid_t tid);
 
 #endif /* threads/thread.h */
-

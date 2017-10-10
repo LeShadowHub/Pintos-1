@@ -88,8 +88,7 @@ static void start_process (void *command_) {
    struct intr_frame if_;
    bool success = false;
    struct thread *cur = thread_current();
-   // lock_init(&pid_lock);
-   // thread_current()->pid = allocate_pid();
+
    /* Initialize interrupt frame and load executable. */
    memset (&if_, 0, sizeof if_);
    if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
@@ -183,13 +182,20 @@ void process_exit (void) {
    struct thread *cur = thread_current ();
    uint32_t *pd;
 
-
    /* clean up this thread's children, free the killed ones, mark the rest orphan */
    while (!list_empty(&cur->child_list)) {
       struct list_elem * e = list_pop_front(&cur->child_list);
       struct pcb_t *child = list_entry(e, struct pcb_t, elem);
       if (child->killed) palloc_free_page(child);
       else child->orphan = 1;
+   }
+
+   /* close all opened files in current thread */
+   while (!list_empty(&cur->file_table)) {
+      struct list_elem *e = list_pop_front(&cur->file_table);
+      struct file_table_entry * fte = list_entry(e, struct file_table_entry, elem);
+      file_close(fte->file);
+      palloc_free_page(fte);
    }
 
    cur->pcb->killed = 1;   // mark this thread killed
