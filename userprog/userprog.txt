@@ -5,9 +5,9 @@
 		     +--------------------------+
 ---- GROUP ----
 >> Fill in the names and email addresses of your group members.
-Matthew Tawil <matttawil@utexas.edue>
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
+Matthew Tawil <matttawil@utexas.edu>
+Allen Pan <@utexas.edu>
+Ze Lyu <@utexas.edu>
 ---- PRELIMINARIES ----
 >> If you have any preliminary comments on your submission, notes for the
 >> TAs, or extra credit, please give them here.
