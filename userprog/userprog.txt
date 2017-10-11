@@ -7,7 +7,7 @@
 >> Fill in the names and email addresses of your group members.
 Matthew Tawil <matttawil@utexas.edu>
 Allen Pan <@utexas.edu>
-Ze Lyu <@utexas.edu>
+Ze Lyu <livermorium@utexas.edu>
 ---- PRELIMINARIES ----
 >> If you have any preliminary comments on your submission, notes for the
 >> TAs, or extra credit, please give them here.
