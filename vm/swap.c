@@ -14,7 +14,7 @@ struct block *swap_device;
 
 static struct bitmap *swap_map;
 
-static size_t SECTORS_PERPAGE = PGSIZE / BLOCK_SECTOR_SIZE;
+static size_t SECTORS_PER_PAGE = PGSIZE / BLOCK_SECTOR_SIZE;
 static size_t swap_pages;
 
 /* Initialize table */
