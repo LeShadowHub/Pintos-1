@@ -31,6 +31,10 @@
 #else
 #include "tests/threads/tests.h"
 #endif
+#ifdef VM
+#include "vm/frame.h"
+#include "vm/swap.h"
+#endif
 #ifdef FILESYS
 #include "devices/block.h"
 #include "devices/ide.h"
@@ -103,6 +107,11 @@ main (void)
 #ifdef USERPROG
   tss_init ();
   gdt_init ();
+#endif
+
+#ifdef VM
+  /* Initialize Virtual memory system. (Project 3) */
+  frame_table_init();
 #endif
 
   /* Initialize interrupt handlers. */

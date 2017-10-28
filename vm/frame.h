@@ -1,11 +1,12 @@
 /*************************************
- *             frame.h               *
- * Created by Matthew T on 10/23/17. *
- ************************************/
+*             frame.h               *
+************************************/
+#ifndef VM_FRAME_H
+#define VM_FRAME_H
+#include "threads/palloc.h"
 
-#ifndef FRAME_H
-#define FRAME_H
+void frame_table_init(void);
+void * frame_allocate(enum palloc_flags flag, void *page);
+void frame_free(void * frame);
 
-#include <stdio.h>
-
-#endif /* frame_h */
+#endif

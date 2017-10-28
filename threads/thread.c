@@ -15,6 +15,7 @@
 #include "userprog/process.h"
 #endif
 
+
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
@@ -191,6 +192,7 @@ thread_create (const char *name, int priority,
   t->pcb->already_wait = 0;
   t->pcb->killed = 0;
   t->pcb->orphan = 0;
+  t->pcb->executable = NULL;
   sema_init(&t->pcb->process_exec_sema, 0);  // Synchronize between process_execute and start_process
   #endif
   /* Stack frame for kernel_thread(). */
@@ -619,3 +621,4 @@ struct thread * get_thread_by_tid(tid_t tid) {
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+

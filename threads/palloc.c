@@ -25,7 +25,10 @@
    half to the user pool.  That should be huge overkill for the
    kernel pool, but that's just fine for demonstration purposes. */
 
-/* A memory pool. */
+/*
+   A memory pool.
+   Seems like a pool is a simulation of physical memory
+*/
 struct pool
   {
     struct lock lock;                   /* Mutual exclusion. */
@@ -46,10 +49,10 @@ void
 palloc_init (size_t user_page_limit)
 {
   /* Free memory starts at 1 MB and runs to the end of RAM. */
-  uint8_t *free_start = ptov (1024 * 1024);
-  uint8_t *free_end = ptov (init_ram_pages * PGSIZE);
+  uint8_t *free_start = ptov (1024 * 1024); // for some reason, leave out the first 1MB
+  uint8_t *free_end = ptov (init_ram_pages * PGSIZE); // init_ram_pages contains the number of pages (frames) in RAM
   size_t free_pages = (free_end - free_start) / PGSIZE;
-  size_t user_pages = free_pages / 2;
+  size_t user_pages = free_pages / 2;  // give up to half of all pages to user
   size_t kernel_pages;
   if (user_pages > user_page_limit)
     user_pages = user_page_limit;
@@ -78,11 +81,11 @@ palloc_get_multiple (enum palloc_flags flags, size_t page_cnt)
     return NULL;
 
   lock_acquire (&pool->lock);
-  page_idx = bitmap_scan_and_flip (pool->used_map, 0, page_cnt, false);
+  page_idx = bitmap_scan_and_flip (pool->used_map, 0, page_cnt, false);  // the index of the page starting from which can be allocated
   lock_release (&pool->lock);
 
   if (page_idx != BITMAP_ERROR)
-    pages = pool->base + PGSIZE * page_idx;
+    pages = pool->base + PGSIZE * page_idx;  // need + base here cuz pool may be user or kernel
   else
     pages = NULL;
 
