@@ -7,7 +7,6 @@
 #include "threads/synch.h"
 #include "userprog/process.h"
 #include "threads/thread.h"
-
 #include "threads/interrupt.h"
 
 
@@ -44,7 +43,7 @@ void * frame_allocate(enum palloc_flags flag, void *page) {
       return frame;
    }
    // create a frame table entry
-   struct frame_table_entry *fte = malloc(sizeof(struct frame_table_entry));
+   struct frame_table_entry *fte = (struct frame_table_entry *) malloc(sizeof(struct frame_table_entry));
    fte->proc = thread_current();
    fte->frame = frame;
    fte->page = page;

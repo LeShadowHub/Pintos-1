@@ -25,6 +25,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "vm/frame.h"
+#include "vm/page.h"
 
 #define LOGGING_LEVEL 6
 
@@ -68,6 +69,8 @@ tid_t process_execute (const char *cmdline) {
   char *saveptr;
   strtok_r(file_name, " ", &saveptr); // file_name will only contain the file name now
 
+  // the following implementation cloud have been improved if we create a PCB here and pass it into thread_create as aux
+
   /* Create a new thread to execute the executable. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, cmdline_cp);
   struct pcb_t *pcb;
@@ -75,7 +78,7 @@ tid_t process_execute (const char *cmdline) {
      palloc_free_page (cmdline_cp);
   }
   else {  // if child wasn't created, sema wouldn't have been inited
-     struct thread *child = get_thread_by_tid(tid);  // get the newly created thread
+     struct thread *child = get_thread_by_tid(tid);  // get the newly created thread (this implementation is kinda bad)
      list_push_back(&cur->child_list, &child->pcb->elem);  // add the new child to parent's child list
      pcb = child->pcb; // if child is killed, sema still needs access properly, so have a separate pointer for pcb is necessary
      sema_init(&pcb->process_wait_sema, 0);  // think should init here, cuz only necessary to wait when process_wait is called
@@ -198,6 +201,7 @@ void process_exit (void) {
    struct thread *cur = thread_current ();
    uint32_t *pd;
 
+   #ifdef USERPROG
    /* clean up this thread's children, free the killed ones, mark the rest orphan */
    while (!list_empty(&cur->child_list)) {
       struct list_elem * e = list_pop_front(&cur->child_list);
@@ -225,7 +229,13 @@ void process_exit (void) {
       file_allow_write(cur->pcb->executable);
       file_close(cur->pcb->executable);
    }
+   #endif
 
+   #ifdef VM
+   // desctroys all supplemental page table entries, also frees all frames allocated for this process
+   // the table itself will be freed when thread is freed (since it's a struct, not a pointer)
+   sup_page_table_destroy(&cur->sup_page_table);
+   #endif
 
    /* Destroy the current process's page directory and switch back
    to the kernel-only page directory. */
@@ -521,6 +531,9 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (ofs % PGSIZE == 0);
 
   file_seek (file, ofs);
+  struct thread *cur = thread_current ();
+  struct sup_pte_data_filesys aux; // hope this is small enough for now...
+
   while (read_bytes > 0 || zero_bytes > 0)
     {
       /* Divide the filling process to muliple attempts
@@ -531,6 +544,19 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
+      #ifdef VM
+      // Lazy load
+      aux.page_read_bytes = page_read_bytes;
+      aux.page_zero_bytes = page_zero_bytes;
+      aux.file = file;
+      aux.file_ofs = ofs;
+      aux.writable = writable;
+
+      if (!spte_create_by_type(&cur->sup_page_table, upage, NULL, FROM_FILESYS, &aux))
+         return false;
+      ofs += PGSIZE;  // offset for each page will be different
+
+      #else
       /* allocate a frame of memory, associate the virtual page upage to it */
       uint8_t *frame = frame_allocate (PAL_USER, upage); // allocate from user pool
       if (frame == NULL)
@@ -539,7 +565,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       /* Load this page (frame). */
       if (file_read (file, frame, page_read_bytes) != (int) page_read_bytes)
         {
-          palloc_free_page (frame);
+          frame_free (frame);
           return false;
         }
       memset (frame + page_read_bytes, 0, page_zero_bytes);
@@ -553,6 +579,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
           frame_free (frame);
           return false;
         }
+      #endif
 
       /* Advance. */
       read_bytes -= page_read_bytes;
@@ -617,21 +644,27 @@ static bool setup_stack (void **esp, const char **argv, int argc) {
 }
 
 /* Adds a mapping from user virtual address UPAGE to user
-   physical address FRAME to the page table.
-   If WRITABLE is true, the user process may modify the page;
-   otherwise, it is read-only.
-   UPAGE must not already be mapped.
-   FRAME should probably be a page(frame) obtained from the user pool
-   with palloc_get_page(frame_allocate).
-   Returns true on success, false if UPAGE is already mapped or
-   if memory allocation fails. */
+physical address FRAME to the page table.
+If WRITABLE is true, the user process may modify the page;
+otherwise, it is read-only.
+UPAGE must not already be mapped.
+FRAME should probably be a page(frame) obtained from the user pool
+with palloc_get_page(frame_allocate).
+Returns true on success, false if UPAGE is already mapped or
+if memory allocation fails. */
 static bool
 install_page (void *upage, void *frame, bool writable)
 {
-  struct thread *t = thread_current ();
+   struct thread *t = thread_current ();
 
-  /* Verify that there's not already a page at that virtual
-     address, then map our page there. */
-  return (pagedir_get_page (t->pagedir, upage) == NULL
-          && pagedir_set_page (t->pagedir, upage, frame, writable));
+   /* Verify that there's not already a page at that virtual
+   address, then map our page there.
+   also fail when not able to allocate a page for page table
+   short circuit evaluation so set_page not called if get_page != NULL
+   */
+   if (pagedir_get_page (t->pagedir, upage) == NULL && pagedir_set_page (t->pagedir, upage, frame, writable)) {
+      return spte_create_by_type(&t->sup_page_table, upage, frame, ON_FRAME, NULL);  // create a sup page table entry for this mapping
+   }
+   else return false;
 }
+

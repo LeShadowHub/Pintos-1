@@ -2,15 +2,18 @@
  * Modified by:
  * Matthew Tawil (mt33924)
  * Allen Pan (xp572)
- * Ze Lyu (zl5298) 
+ * Ze Lyu (zl5298)
  */
 
 #include "userprog/exception.h"
 #include <inttypes.h>
 #include <stdio.h>
 #include "userprog/gdt.h"
+#include "userprog/pagedir.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
+#include "vm/page.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -145,6 +148,10 @@ page_fault (struct intr_frame *f)
      (#PF)". */
   asm ("movl %%cr2, %0" : "=r" (fault_addr));
 
+  void* fault_page = (void*) pg_round_down(fault_addr);
+  struct thread *cur = thread_current();
+
+
   /* Turn interrupts back on (they were only off so that we could
      be assured of reading CR2 before it changed). */
   intr_enable ();
@@ -157,16 +164,35 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
-  /* START: ADDED CODE */
-  if (not_present) { // page not found in page table (not mapped)
-     // a page fault in the kernel merely sets eax to 0xffffffff and copies its former value into eip.
-     if (!user) { // access by kernel
-        f->eip = (void *) f->eax;
-        f->eax = 0xffffffff;
-        return;
-     }
+
+  if (!not_present) {  // page present in page table
+     if (write)  goto INVALID_ACCESS;  // a write to read-only region is invalid (should be by user)
+     if (user || is_kernel_vaddr(fault_addr) || fault_addr == NULL)  // a user trying to access kernel memory or a null pointer
+         goto INVALID_ACCESS;
   }
-  /* END: ADDED CODE */
+
+// valid memory access, meaning page fault
+  struct sup_page_table_entry * spte = get_spte(&cur->sup_page_table, fault_page);
+  if (spte == NULL) {  // the faulted page not in sup page table
+
+ } else {      // the faulted page is in the sup page table, need to bring
+    if (!spte->present) {
+      if (!load_page(spte))
+         goto INVALID_ACCESS;  // but not an antual invalid access; caused by frame allocation or file read issue
+   }
+}
+
+// page fault successfully handled
+   return;
+
+  INVALID_ACCESS:
+  // a page fault in the kernel merely sets eax to 0xffffffff and copies its former value into eip.
+  // indicate a bug in kernel
+  if (!user) { // access by kernel
+     f->eip = (void *) f->eax;
+     f->eax = 0xffffffff;
+     return;
+  }
 
 
   /* To implement virtual memory, delete the rest of the function

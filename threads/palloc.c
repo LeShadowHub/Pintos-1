@@ -49,6 +49,8 @@ void
 palloc_init (size_t user_page_limit)
 {
   /* Free memory starts at 1 MB and runs to the end of RAM. */
+  /* even tho we dealing with kernel virtual address here, we are actually assigning
+   physical memory, see ptov */
   uint8_t *free_start = ptov (1024 * 1024); // for some reason, leave out the first 1MB
   uint8_t *free_end = ptov (init_ram_pages * PGSIZE); // init_ram_pages contains the number of pages (frames) in RAM
   size_t free_pages = (free_end - free_start) / PGSIZE;
@@ -57,6 +59,7 @@ palloc_init (size_t user_page_limit)
   if (user_pages > user_page_limit)
     user_pages = user_page_limit;
   kernel_pages = free_pages - user_pages;
+
 
   /* Give half of memory to kernel, half to user. */
   init_pool (&kernel_pool, free_start, kernel_pages, "kernel pool");
@@ -139,7 +142,6 @@ palloc_free_multiple (void *pages, size_t page_cnt)
 #ifndef NDEBUG
   memset (pages, 0xcc, PGSIZE * page_cnt);
 #endif
-
   ASSERT (bitmap_all (pool->used_map, page_idx, page_cnt));
   bitmap_set_multiple (pool->used_map, page_idx, page_cnt, false);
 }

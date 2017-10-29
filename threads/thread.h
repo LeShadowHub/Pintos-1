@@ -3,6 +3,7 @@
 
 #include <debug.h>
 #include <list.h>
+#include <hash.h>
 #include <stdint.h>
 #include "userprog/process.h"
 
@@ -103,6 +104,9 @@ struct thread
     struct list file_table;
 #endif
 
+#ifdef VM
+   struct hash sup_page_table;
+#endif
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };

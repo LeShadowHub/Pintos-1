@@ -2,7 +2,7 @@
  * Modified by:
  * Matthew Tawil (mt33924)
  * Allen Pan (xp572)
- * Ze Lyu (zl5298) 
+ * Ze Lyu (zl5298)
  */
 
 #include "userprog/syscall.h"
@@ -26,7 +26,6 @@
 #include "filesys/filesys.h"
 
 static void syscall_handler(struct intr_frame *);
-
 
 /************************ System Calls ************************/
 static void sys_halt(void);
@@ -54,14 +53,14 @@ static void verify_dest(void *dest, unsigned size);
 static struct file_table_entry* get_file_table_entry_by_fd(int fd);
 static int add_to_file_table (struct file_table_entry *fte, struct file *f);
 
-static struct lock filesys_lock;
+static struct lock lock_filesys;
 
 /*
  * void syscall_init (void)
  * Description: system call initialization.
  */
 void syscall_init(void) {
-    lock_init(&filesys_lock);
+    lock_init(&lock_filesys);
     intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
@@ -284,9 +283,9 @@ pid_t sys_exec(const char* cmdline) {
      */
     verify_string(cmdline);
 
-    lock_acquire(&filesys_lock); // in load(), file system is used
+    lock_acquire(&lock_filesys); // in load(), file system is used
     pid_t pid = process_execute(cmdline);
-    lock_release(&filesys_lock);
+    lock_release(&lock_filesys);
 
     return pid;
 }
@@ -318,12 +317,9 @@ int sys_wait(pid_t pid) {
 
 bool sys_create(const char* file, unsigned initial_size) {
     verify_string(file);
-    /* TO DO:
-     * NEED TO CHECK IF CURRENT DIR IS MARKED FOR DELETION
-     */
-    lock_acquire(&filesys_lock);
+    lock_acquire(&lock_filesys);
     bool result = filesys_create(file, initial_size);
-    lock_release(&filesys_lock);
+    lock_release(&lock_filesys);
     return result;
 }
 
@@ -336,14 +332,11 @@ bool sys_create(const char* file, unsigned initial_size) {
  *     it is open or closed, and removing an open file does not close it.
  */
 bool sys_remove(const char* file) {
-
     /*Check if filename is valid*/
     verify_string(file);
-
-    //ASSERT(!lock_held_by_current_thread(&filesys_lock));
-    lock_acquire(&filesys_lock);
+    lock_acquire(&lock_filesys);
     bool result = filesys_remove(file);
-    lock_release(&filesys_lock);
+    lock_release(&lock_filesys);
     return result;
 
 }
@@ -361,14 +354,14 @@ int sys_open(const char* file) {
     struct file_table_entry *fte = palloc_get_page(0);
     if (!fte) return -1;  // memory allocation failed
 
-    lock_acquire(&filesys_lock);
+    lock_acquire(&lock_filesys);
     struct file *f = filesys_open(file);
     if (f == NULL) {   // file not successfully opened
-        lock_release(&filesys_lock);
+        lock_release(&lock_filesys);
         palloc_free_page(fte);
         return -1;
     }
-    lock_release(&filesys_lock);
+    lock_release(&lock_filesys);
 
     return add_to_file_table(fte, f); // returns the fd
 }
@@ -382,14 +375,14 @@ int sys_open(const char* file) {
  */
 int sys_filesize(int fd) {
     int size;
-    lock_acquire(&filesys_lock);
+    lock_acquire(&lock_filesys);
     struct file_table_entry* fte = get_file_table_entry_by_fd(fd);
     if (fte == NULL) {
-        lock_release(&filesys_lock);
+        lock_release(&lock_filesys);
         return -1;  // return -1 if no such entry? not sepcified
     }
     size = file_length(fte->file);
-    lock_release(&filesys_lock);
+    lock_release(&lock_filesys);
     return size;
 }
 
@@ -408,12 +401,12 @@ int sys_read(int fd, void* buffer, unsigned size) {
    verify_dest(buffer, size);
 
    unsigned bytes_read;
-   lock_acquire(&filesys_lock);
+   lock_acquire(&lock_filesys);
    if (fd == 0) {   // read from keyboard
       for (unsigned i=0; i<size; i++) {
          bool retval = user_mem_write_byte(buffer, input_getc());
          if (!retval) {
-            lock_release(&filesys_lock);
+            lock_release(&lock_filesys);
             invalid_user_access();
          }
       }
@@ -422,12 +415,12 @@ int sys_read(int fd, void* buffer, unsigned size) {
    else {      // read from opened file
       struct file_table_entry *fte = get_file_table_entry_by_fd(fd);
       if (fte == NULL) {
-         lock_release(&filesys_lock);
+         lock_release(&lock_filesys);
          return -1;  // fd is not in the current thread's file table
       }
       bytes_read = file_read (fte->file, buffer, size);
    }
-   lock_release(&filesys_lock);
+   lock_release(&lock_filesys);
    return bytes_read;
 }
 
@@ -447,21 +440,21 @@ int sys_write(int fd, const void* buffer, unsigned size) {
     verify_dest(buffer, size);
 
     unsigned bytes_written;
-    lock_acquire(&filesys_lock);
+    lock_acquire(&lock_filesys);
     if (fd == 1) {  // write to console
         putbuf(buffer, size);
-        lock_release(&filesys_lock);
+        lock_release(&lock_filesys);
         return size;
     }
     else {  // write to a file
       struct file_table_entry *fte = get_file_table_entry_by_fd(fd);
       if (fte == NULL) {
-         lock_release(&filesys_lock);
+         lock_release(&lock_filesys);
          return -1;  // fd is not in the current thread's file table
       }
       bytes_written = file_write (fte->file, buffer, size);
    }
-   lock_release(&filesys_lock);
+   lock_release(&lock_filesys);
    return bytes_written;
 }
 
@@ -474,14 +467,14 @@ int sys_write(int fd, const void* buffer, unsigned size) {
  *     in bytes from the beginning of the file. (Thus, a position of 0 is the file's start.)
  */
 void sys_seek(int fd, unsigned position) {
-    lock_acquire(&filesys_lock);
+    lock_acquire(&lock_filesys);
     struct file_table_entry* fte = get_file_table_entry_by_fd(fd);
     if (fte == NULL) {
-        lock_release(&filesys_lock);
+        lock_release(&lock_filesys);
         return;
     }
     file_seek(fte->file, position);
-    lock_release(&filesys_lock);
+    lock_release(&lock_filesys);
 }
 
 /*
@@ -494,14 +487,14 @@ void sys_seek(int fd, unsigned position) {
  */
 unsigned sys_tell(int fd) {
     unsigned  tell;
-    lock_acquire(&filesys_lock);
+    lock_acquire(&lock_filesys);
     struct file_table_entry* fte = get_file_table_entry_by_fd(fd);
     if (fte == NULL) {
-        lock_release(&filesys_lock);
+        lock_release(&lock_filesys);
         return -1;
     }
     tell = file_tell(fte->file);
-    lock_release(&filesys_lock);
+    lock_release(&lock_filesys);
     return tell;
 }
 
@@ -511,10 +504,10 @@ unsigned sys_tell(int fd) {
  * Description: closes file descriptor fd.
  */
 void sys_close(int fd) {
-    lock_acquire(&filesys_lock);
+    lock_acquire(&lock_filesys);
     struct file_table_entry* fte = get_file_table_entry_by_fd(fd);
     if (fte == NULL) {
-        lock_release(&filesys_lock);
+        lock_release(&lock_filesys);
         return;
     }
 
@@ -522,7 +515,7 @@ void sys_close(int fd) {
     list_remove(&fte->elem);
     palloc_free_page(fte);
 
-    lock_release(&filesys_lock);
+    lock_release(&lock_filesys);
 }
 
 
@@ -623,8 +616,11 @@ static bool user_mem_write_byte(uint8_t* dest_addr, uint8_t byte) {
  * Description: for now just exits with status -1
  *     how to free memory and release lock?
  */
-static void invalid_user_access() {
+ static void invalid_user_access() {
+    if (lock_held_by_current_thread(&lock_filesys))
+    lock_release (&lock_filesys);
     sys_exit(-1);
+    NOT_REACHED();
 }
 
 /************************ File Table Helper Functions ************************/
@@ -660,4 +656,3 @@ static struct file_table_entry* get_file_table_entry_by_fd(int fd) {
    }
    return NULL;
 }
-
