@@ -11,9 +11,8 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
-#ifdef USERPROG
 #include "userprog/process.h"
-#endif
+#include "vm/page.h"
 
 
 /* Random value for struct thread's `magic' member.
@@ -162,7 +161,12 @@ thread_print_stats (void)
 
    The code provided sets the new thread's `priority' member to
    PRIORITY, but no actual priority scheduling is implemented.
-   Priority scheduling is the goal of Problem 1-3. */
+   Priority scheduling is the goal of Problem 1-3.
+
+   The first thread––main is the only thread that does not go through
+   this procedure. That means all initialization that happens here do not
+   apply to the "main" thread. So far havent seen that affect anything.
+*/
 tid_t
 thread_create (const char *name, int priority,
                thread_func *function, void *aux)
@@ -172,22 +176,41 @@ thread_create (const char *name, int priority,
   struct switch_entry_frame *ef;
   struct switch_threads_frame *sf;
   tid_t tid;
+  bool spt_init_success = false;
 
   ASSERT (function != NULL);
 
   /* Allocate thread. */
   t = palloc_get_page (PAL_ZERO);
-  if (t == NULL)
-    return TID_ERROR;
-
+  if (t == NULL) {
+     tid = TID_ERROR;
+     goto done;
+ }
   /* Initialize thread. */
   init_thread (t, name, priority);
+
+  // initializing pcb here cuz it's part of creation and need to return if failed
+  #ifdef USERPROG
+  t->pcb = palloc_get_page(PAL_ZERO);
+  if (t->pcb == NULL)  {
+     tid = TID_ERROR;
+     goto done;
+  }
+  #endif
+
+  // init sup page table here also because it does memory allocation
+  #ifdef VM
+  if (spt_init_success = sup_page_table_init(&t->sup_page_table) == false) {
+     tid = TID_ERROR;
+     goto done;
+  }
+  #endif
+
+  // not allocate tid until thread is successfully created
   tid = t->tid = allocate_tid();  // cannot be inside init_thread cuz of how lock works
   ASSERT (tid != -1);
 
   #ifdef USERPROG
-  // since page allocation can only be done in a running thread,
-  t->pcb = palloc_get_page(0);
   t->pcb->pid = tid;
   t->pcb->already_wait = 0;
   t->pcb->killed = 0;
@@ -195,6 +218,7 @@ thread_create (const char *name, int priority,
   t->pcb->executable = NULL;
   sema_init(&t->pcb->process_exec_sema, 0);  // Synchronize between process_execute and start_process
   #endif
+
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
   kf->eip = NULL;
@@ -213,6 +237,19 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
+  done:
+      if (tid == TID_ERROR) {  // free created resources since creation failed
+         #ifdef VM
+         if (spt_init_success) sup_page_table_destroy(&t->sup_page_table);
+         #endif
+         #ifdef USERPROG
+         if (t->pcb != NULL) palloc_free_page(t->pcb);
+         #endif
+         if (t != NULL) {
+            list_remove(&t->allelem);  // remove from the thread list
+            palloc_free_page(t);
+         }
+      }
   return tid;
 }
 
@@ -476,14 +513,16 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->magic = THREAD_MAGIC;
 
+  #ifdef USERPROG
+  t->pcb = NULL;
+  list_init(&t->child_list);
+  list_init(&t->file_table);
+  #endif
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
 
-  #ifdef USERPROG
-  list_init(&t->child_list);
-  list_init(&t->file_table);
-  #endif
+
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
@@ -621,4 +660,3 @@ struct thread * get_thread_by_tid(tid_t tid) {
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
-

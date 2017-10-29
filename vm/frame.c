@@ -7,7 +7,6 @@
 #include "threads/synch.h"
 #include "userprog/process.h"
 #include "threads/thread.h"
-
 #include "threads/interrupt.h"
 
 
@@ -41,10 +40,14 @@ void * frame_allocate(enum palloc_flags flag, void *page) {
    void * frame = palloc_get_page(flag);
    if (frame == NULL) {     // page allocation failed
       lock_release(&lock_frame);
-      return frame;
+      return NULL;
    }
    // create a frame table entry
-   struct frame_table_entry *fte = malloc(sizeof(struct frame_table_entry));
+   struct frame_table_entry *fte = (struct frame_table_entry *) malloc(sizeof(struct frame_table_entry));
+   if (fte == NULL) {
+      lock_release(&lock_frame);
+      return NULL;
+   }
    fte->proc = thread_current();
    fte->frame = frame;
    fte->page = page;
@@ -61,6 +64,15 @@ void frame_free(void * frame) {
    struct frame_table_entry *fte = get_FTE_by_frame(frame);
    list_remove(&fte->elem);
    palloc_free_page(frame);
+   free(fte);
+   lock_release(&lock_frame);
+}
+
+/* Remove frame table entry but not free the frame*/
+void frame_table_entry_delete(void * frame) {
+   lock_acquire(&lock_frame);
+   struct frame_table_entry *fte = get_FTE_by_frame(frame);
+   list_remove(&fte->elem);
    free(fte);
    lock_release(&lock_frame);
 }

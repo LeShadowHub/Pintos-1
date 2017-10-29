@@ -8,5 +8,6 @@
 void frame_table_init(void);
 void * frame_allocate(enum palloc_flags flag, void *page);
 void frame_free(void * frame);
+void frame_table_entry_delete(void * frame);
 
 #endif

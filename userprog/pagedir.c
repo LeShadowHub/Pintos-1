@@ -2,7 +2,7 @@
  * Modified by:
  * Matthew Tawil (mt33924)
  * Allen Pan (xp572)
- * Ze Lyu (zl5298) 
+ * Ze Lyu (zl5298)
  */
 
 #include "userprog/pagedir.h"
@@ -102,7 +102,12 @@ lookup_page (uint32_t *pd, const void *vaddr, bool create)
    If WRITABLE is true, the new page is read/write;
    otherwise it is read-only.
    Returns true if successful, false if memory allocation
-   failed. */
+   failed.
+
+   We can treat kernel virtual address as if it's equivalent to physical address
+   since we are using it as a workaround to access physical memory.
+   For this reason, in some code I use FRAME to replace KPAGE
+*/
 bool
 pagedir_set_page (uint32_t *pd, void *upage, void *kpage, bool writable)
 {
