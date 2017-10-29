@@ -253,11 +253,7 @@ void process_exit (void) {
       pagedir_activate (NULL);
       pagedir_destroy (pd);
    }
-   #ifdef VM
-   // desctroys all supplemental page table entries, also frees all frames allocated for this process
-   // the table itself will be freed when thread is freed (since it's a struct, not a pointer)
-   sup_page_table_destroy(&cur->sup_page_table);
-   #endif
+
 
 
 
@@ -672,3 +668,4 @@ install_page (void *upage, void *frame, bool writable)
    }
    else return false;
 }
+
