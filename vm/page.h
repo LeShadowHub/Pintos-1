@@ -49,3 +49,4 @@ struct sup_page_table_entry * get_spte (struct hash * spt, const void * page);
 
 
 #endif /* page_h */
+

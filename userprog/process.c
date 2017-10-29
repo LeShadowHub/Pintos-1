@@ -231,6 +231,11 @@ void process_exit (void) {
    }
    #endif
 
+   #ifdef VM
+   // desctroys all supplemental page table entries, also frees all frames allocated for this process
+   // the table itself will be freed when thread is freed (since it's a struct, not a pointer)
+   sup_page_table_destroy(&cur->sup_page_table);
+   #endif
 
    /* Destroy the current process's page directory and switch back
    to the kernel-only page directory. */
