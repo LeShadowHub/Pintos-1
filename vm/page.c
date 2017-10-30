@@ -123,7 +123,7 @@ bool load_page(struct sup_page_table_entry * spte) {
    bool success;
    switch (spte->page_type) {
       case ON_FRAME:
-         PANIC ("Erroe: Trying to load a page that's already on frame");
+         PANIC ("Error: Trying to load a page that's already on frame");
          break;
       case ALL_ZERO:
          success = load_page_allzero(spte);

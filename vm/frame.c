@@ -17,6 +17,8 @@ static struct lock lock_frame;
 static struct list_elem * cur_e;     // used for replacement clock algorithm
 static struct frame_table_entry * get_FTE_by_frame(void *frame);
 static struct frame_table_entry * get_evict_FTE (void);
+static void _frame_free (void * frame, bool free_frame);
+
 
 // frame table entry
 struct frame_table_entry {
@@ -64,7 +66,7 @@ void * frame_allocate(enum palloc_flags flag, void *page) {
             spte_swap_out(spte,swap_index);
       }
 
-      frame_free(fte_evicted->frame);  // free this frame, then bring in a new frame
+      _frame_free(fte_evicted->frame, true);  // free this frame, then bring in a new frame
       frame = palloc_get_page(flag);
       ASSERT(frame != NULL);
    }
@@ -88,20 +90,23 @@ void * frame_allocate(enum palloc_flags flag, void *page) {
 /* Free the frame and delete it from frame table */
 void frame_free(void * frame) {
    lock_acquire(&lock_frame);
-   struct frame_table_entry *fte = get_FTE_by_frame(frame);
-   list_remove(&fte->elem);
-   palloc_free_page(frame);
-   free(fte);
+   _frame_free(frame, true);
    lock_release(&lock_frame);
 }
 
 /* Remove frame table entry but not free the frame*/
 void frame_table_entry_delete(void * frame) {
    lock_acquire(&lock_frame);
+   _frame_free(frame, false);
+   lock_release(&lock_frame);
+}
+
+static void _frame_free (void * frame, bool free_frame) {
+   ASSERT (lock_held_by_current_thread(&lock_frame) == true);
    struct frame_table_entry *fte = get_FTE_by_frame(frame);
    list_remove(&fte->elem);
+   if (free_frame) palloc_free_page(frame);
    free(fte);
-   lock_release(&lock_frame);
 }
 
 /* does a linear search to find the FTE associated with this frame*/
@@ -145,3 +150,4 @@ static struct frame_table_entry * get_evict_FTE (void) {
    return cur;
 
 }
+

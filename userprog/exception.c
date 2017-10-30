@@ -182,8 +182,8 @@ page_fault (struct intr_frame *f)
         if (!grow_stack(fault_page)) goto INVALID_ACCESS;
      } else goto INVALID_ACCESS;  // accessing somewhere that's not allocated and not an attempt to grow stack
  } else {      // the faulted page is in the sup page table, so either in filesys or swap slot (or all zero)
-      ASSERT(!spte->present);
       ASSERT(!pagedir_is_present(cur->pagedir, spte->page));
+      ASSERT(!spte->present);
       if (!load_page(spte)) goto INVALID_ACCESS;  // but not an antual invalid access; caused by frame allocation or file read issue
    }
 
@@ -211,3 +211,4 @@ page_fault (struct intr_frame *f)
           user ? "user" : "kernel");
   kill (f);
 }
+
