@@ -112,6 +112,7 @@ main (void)
 #ifdef VM
   /* Initialize Virtual memory system. (Project 3) */
   frame_table_init();
+  swap_init();
 #endif
 
   /* Initialize interrupt handlers. */

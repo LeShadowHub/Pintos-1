@@ -668,4 +668,3 @@ install_page (void *upage, void *frame, bool writable)
    }
    else return false;
 }
-

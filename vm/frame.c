@@ -39,6 +39,7 @@ void * frame_allocate(enum palloc_flags flag, void *page) {
    // get a frame in the physical memory allocated
    void * frame = palloc_get_page(flag);
    if (frame == NULL) {     // page allocation failed
+
       lock_release(&lock_frame);
       return NULL;
    }
