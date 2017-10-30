@@ -106,6 +106,7 @@ struct thread
 
 #ifdef VM
    struct hash sup_page_table;
+   void * cur_stack_bound_addr;
 #endif
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */

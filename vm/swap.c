@@ -3,7 +3,6 @@
  ************************************/
 
 #include "vm/swap.h"
-#include <bitmap.h>
 #include "devices/block.h"
 #include "threads/vaddr.h"
 #include "threads/synch.h"
@@ -39,6 +38,7 @@ void swap_destroy(void) {
    bitmap_destroy(swap_slots);
 }
 
+
 /* Write one frame (page) to the swap slots (one slot)
    Return the index of the slot written'
    Return BITMAP_ERROR if failed */
@@ -46,7 +46,7 @@ size_t swap_out (void *frame){
 
     /* Search for available region */
     size_t slot_index = bitmap_scan(swap_table, 0, 1, true);  // start at 0, 1 consecutive page
-    if (slot_index == BITMAP_ERROR) return BITMAP_ERROR;
+    if (slot_index == BITMAP_ERROR) return SWAP_ERROR;
     /* mark used in swap table for the slot */
     bitmap_set(swap_table, slot_index, false);
     // write one page to the swap slots
@@ -61,6 +61,13 @@ void swap_in (size_t slot_index, void * frame){
    ASSERT(bitmap_test(swap_slots, slot_index) == false);
 
    block_read_slot(swap_slots, slot_index * SECTORS_PER_SLOT, frame);
+   bitmap_set(swap_table, slot_index, true);
+}
+
+
+void swap_free (size_t slot_index) {
+   ASSERT(slot_index < SWAP_TABLE_SIZE);
+   ASSERT(bitmap_test(swap_slots, slot_index) == false);
    bitmap_set(swap_table, slot_index, true);
 }
 
@@ -80,4 +87,3 @@ static void block_read_slot(struct block * block, size_t start_sector, void * bu
       block_read(block, start_sector + i, buffer + (i * BLOCK_SECTOR_SIZE));
    }
 }
-

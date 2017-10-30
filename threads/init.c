@@ -109,12 +109,6 @@ main (void)
   gdt_init ();
 #endif
 
-#ifdef VM
-  /* Initialize Virtual memory system. (Project 3) */
-  frame_table_init();
-  swap_init();
-#endif
-
   /* Initialize interrupt handlers. */
   intr_init ();
   timer_init ();
@@ -135,6 +129,12 @@ main (void)
   ide_init ();
   locate_block_devices ();
   filesys_init (format_filesys);
+#endif
+
+#ifdef VM
+  /* Initialize Virtual memory system. (Project 3) */
+  frame_table_init();
+  swap_init();       // must be after filesys_init
 #endif
 
   printf ("Boot complete.\n");

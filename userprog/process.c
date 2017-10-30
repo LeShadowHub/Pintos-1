@@ -553,7 +553,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       aux.file_ofs = ofs;
       aux.writable = writable;
 
-      if (!spte_create_by_type(&cur->sup_page_table, upage, NULL, FROM_FILESYS, &aux))
+      if (spte_create_by_type(&cur->sup_page_table, upage, NULL, FROM_FILESYS, &aux) == NULL)
          return false;
       ofs += page_read_bytes;  // offset for each page will be different
 
@@ -597,7 +597,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool setup_stack (void **esp, const char **argv, int argc) {
   uint8_t *frame;
   bool success = false;
-  void * stack_bound_addr = (uint8_t *) PHYS_BASE - PGSIZE;  // one page for stack; virtual address
+  void * stack_bound_addr = thread_current()->cur_stack_bound_addr = (uint8_t *) PHYS_BASE - PGSIZE;  // one page for stack; virtual address
   frame = frame_allocate (PAL_USER | PAL_ZERO, stack_bound_addr);
   if (frame != NULL)
     {
@@ -664,7 +664,7 @@ install_page (void *upage, void *frame, bool writable)
    short circuit evaluation so set_page not called if get_page != NULL
    */
    if (pagedir_get_page (t->pagedir, upage) == NULL && pagedir_set_page (t->pagedir, upage, frame, writable)) {
-      return spte_create_by_type(&t->sup_page_table, upage, frame, ON_FRAME, NULL);  // create a sup page table entry for this mapping
+      return spte_create_by_type(&t->sup_page_table, upage, frame, ON_FRAME, NULL) == NULL ? false : true;  // create a sup page table entry for this mapping
    }
    else return false;
 }

@@ -66,16 +66,21 @@ is_kernel_vaddr (const void *vaddr)
   return vaddr >= PHYS_BASE;
 }
 
-/* Returns kernel virtual address at which physical address PADDR
-   is mapped.
-   The 80x86 doesn't provide any way to directly access memory at a physical
-   address. Pintos works around this by mapping kernel virtual memory directly
-   to physical memory: the first page of kernel virtual memory (that's why here
-   we add paddr to PHYS_BASE) is mapped to the first frame of physical memory,
-   the second page to the second frame, and so on. Thus, frames can be accessed
-   through kernel virtual memory.
+/*
+   The 80x86 doesn't provide any way to directly access memory given a physical
+   address. This ability is often necessary in an operating system kernel, so
+   Pintos works around it by mapping kernel virtual memory one-to-one to
+   physical memory. That is, virtual address PHYS_BASE accesses physical
+   address 0, virtual address PHYS_BASE + 0x1234 accesses physical address
+   0x1234, and so on up to the size of the machine's physical memory. Thus,
+   adding PHYS_BASE to a physical address obtains a kernel virtual address
+   that accesses that address; conversely, subtracting PHYS_BASE from a kernel
+   virtual address obtains the corresponding physical address.
    Question: since only 1GB for kernel memory space, what if paddr > 1GB? there is overflow
-   if look at palloc_init, that can happen if init_ram_pages * PGSIZE > 1GB (I guess just assume physical memory is less than 1GB)
+   if look at palloc_init, that can happen if init_ram_pages * PGSIZE > 1GB
+
+   Returns kernel virtual address at which physical address PADDR
+      is mapped.
 */
 static inline void *
 ptov (uintptr_t paddr)

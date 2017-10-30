@@ -15,6 +15,8 @@
 #include "threads/vaddr.h"
 #include "vm/page.h"
 
+#define MAX_STACK_SIZE  0x800000   // 8MB
+
 /* Number of page faults processed. */
 static long long page_fault_cnt;
 
@@ -138,6 +140,7 @@ page_fault (struct intr_frame *f)
   bool write;        /* True: access was write, false: access was read. */
   bool user;         /* True: access by user, false: access by kernel. */
   void *fault_addr;  /* Fault address. */
+  void *fault_page;
 
   /* Obtain faulting address, the virtual address that was
      accessed to cause the fault.  It may point to code or to
@@ -148,7 +151,6 @@ page_fault (struct intr_frame *f)
      (#PF)". */
   asm ("movl %%cr2, %0" : "=r" (fault_addr));
 
-  void* fault_page = (void*) pg_round_down(fault_addr);
   struct thread *cur = thread_current();
 
 
@@ -164,23 +166,27 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
-
+  fault_page = pg_round_down(fault_addr);
   if (!not_present) {  // page present in page table
      if (write)  goto INVALID_ACCESS;  // a write to read-only region is invalid (should be by user)
      if (user || is_kernel_vaddr(fault_addr) || fault_addr == NULL)  // a user trying to access kernel memory or a null pointer
          goto INVALID_ACCESS;
+      PANIC ("Un-dealt page fault type");
   }
 
 // valid memory access, meaning page fault
   struct sup_page_table_entry * spte = get_spte(&cur->sup_page_table, fault_page);
   if (spte == NULL) {  // the faulted page not in sup page table
-
- } else {      // the faulted page is in the sup page table, need to bring
-    if (!spte->present) {
-      if (!load_page(spte))
-         goto INVALID_ACCESS;  // but not an antual invalid access; caused by frame allocation or file read issue
+     // determine if it's a stack overflow;
+     if ((f->esp == fault_addr + 4 || f->esp == fault_addr + 32) && (fault_addr >= (PHYS_BASE - MAX_STACK_SIZE))) {
+        if (!grow_stack(fault_page)) goto INVALID_ACCESS;
+     } else goto INVALID_ACCESS;  // accessing somewhere that's not allocated and not an attempt to grow stack
+ } else {      // the faulted page is in the sup page table, so either in filesys or swap slot (or all zero)
+      ASSERT(!spte->present);
+      ASSERT(!pagedir_is_present(cur->pagedir, spte->page));
+      if (!load_page(spte)) goto INVALID_ACCESS;  // but not an antual invalid access; caused by frame allocation or file read issue
    }
-}
+
 
 // page fault successfully handled
    return;
