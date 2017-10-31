@@ -35,7 +35,7 @@ bool swap_init() {
 /* not used
     all resources should be freed automatically when system shut down */
 void swap_destroy(void) {
-   bitmap_destroy(swap_slots);
+   bitmap_destroy(swap_table);
 }
 
 
@@ -58,7 +58,7 @@ size_t swap_out (void *frame){
 /* Write the content from slot SLOT_INDEX to FRAME*/
 void swap_in (size_t slot_index, void * frame){
    ASSERT(slot_index < SWAP_TABLE_SIZE);
-   ASSERT(bitmap_test(swap_slots, slot_index) == false);
+   ASSERT(bitmap_test(swap_table, slot_index) == false);
 
    block_read_slot(swap_slots, slot_index * SECTORS_PER_SLOT, frame);
    bitmap_set(swap_table, slot_index, true);
@@ -67,7 +67,7 @@ void swap_in (size_t slot_index, void * frame){
 
 void swap_free (size_t slot_index) {
    ASSERT(slot_index < SWAP_TABLE_SIZE);
-   ASSERT(bitmap_test(swap_slots, slot_index) == false);
+   ASSERT(bitmap_test(swap_table, slot_index) == false);
    bitmap_set(swap_table, slot_index, true);
 }
 
@@ -87,3 +87,4 @@ static void block_read_slot(struct block * block, size_t start_sector, void * bu
       block_read(block, start_sector + i, buffer + (i * BLOCK_SECTOR_SIZE));
    }
 }
+

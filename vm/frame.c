@@ -50,14 +50,15 @@ void * frame_allocate(enum palloc_flags flag, void *page) {
       struct frame_table_entry *fte_evicted = get_evict_FTE();
       // clears Present bit, page itself not freed. other bits are preserved (such as dirty bit)
       pagedir_clear_page(fte_evicted->thread->pagedir, fte_evicted->page);
-      struct sup_page_table_entry * spte = get_spte (&fte_evicted->thread->sup_page_table, page);
+      struct sup_page_table_entry * spte = get_spte (&fte_evicted->thread->sup_page_table, fte_evicted->page);
       ASSERT(spte != NULL);
-// In Pintos, every user virtual page is aliased to its kernel virtual page. You must manage these aliases somehow.
-// I don't know if this is the correct way to solve this aliasing problem.
+      // In Pintos, every user virtual page is aliased to its kernel virtual page. You must manage these aliases somehow.
+
+
       if (!(pagedir_is_dirty(fte_evicted->thread->pagedir, fte_evicted->page) || pagedir_is_dirty(fte_evicted->thread->pagedir, fte_evicted->frame))
             && spte->page_type == FROM_FILESYS)
       {  // not dirty and it's from filesys
-         fte_evicted->frame = NULL;
+         spte->frame = NULL;
          spte_to_filesys (spte);
       }
       else { // otherwise, write the frame to swap slot
@@ -147,7 +148,8 @@ static struct frame_table_entry * get_evict_FTE (void) {
       if (cur_e == list_end(&frame_table))  cur_e = list_begin(&frame_table);
       cur = list_entry (cur_e, struct frame_table_entry, elem);
    }
+   // this frame_table_entry is going to be evicted, so change cur_e (the clock ptr) to the next entry
+   cur_e = list_next(cur_e);
    return cur;
-
 }
 

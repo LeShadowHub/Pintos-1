@@ -49,6 +49,7 @@ struct sup_page_table_entry * spte_create_by_type(struct hash * spt, void * page
    spte->page_type = page_type;
    switch (page_type) {
       case ON_FRAME:
+         spte->writable = true;
          spte->present = true;
          break;
       case ALL_ZERO:
