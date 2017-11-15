@@ -19,6 +19,8 @@
 
 /* Number of timer ticks since OS booted. */
 static int64_t ticks;
+/* List of processes put to sleep by timer_sleep */
+static struct list wait_list;
 
 /* Number of loops per timer tick.
    Initialized by timer_calibrate(). */
@@ -29,6 +31,7 @@ static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
+static void update_wait_list(void);
 
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
@@ -37,6 +40,7 @@ timer_init (void)
 {
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+  list_init (&wait_list);
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -85,15 +89,22 @@ timer_elapsed (int64_t then)
 }
 
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
-   be turned on. */
+   be turned on.
+   Puts the current thread to wait_list
+*/
 void
 timer_sleep (int64_t ticks)
 {
-  int64_t start = timer_ticks ();
+   ASSERT (intr_get_level () == INTR_ON);
+   struct thread * cur = thread_current();
 
-  ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks)
-    thread_yield ();
+   // blocks the thread, add it to wait list and record the necessary status
+   // in timer interrupt, decide whether the sleep time has expired
+   enum intr_level old_level = intr_disable();
+   list_push_back(&wait_list, &cur->waitelem);
+   cur->wait_time = timer_ticks() + ticks;
+   thread_block();
+   intr_set_level (old_level);
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -171,6 +182,8 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
+  // check wait_list
+  update_wait_list();   // isn't this interrupt too long?
   thread_tick ();
 }
 
@@ -244,3 +257,21 @@ real_time_delay (int64_t num, int32_t denom)
   ASSERT (denom % 1000 == 0);
   busy_wait (loops_per_tick * num / 1000 * TIMER_FREQ / (denom / 1000));
 }
+
+static void update_wait_list(void) {
+   ASSERT (intr_get_level () == INTR_OFF);
+   struct list_elem *e = list_begin(&wait_list);
+   struct thread *t;
+
+   while (e != list_tail(&wait_list)) {
+      t = list_entry(e, struct thread, waitelem);
+      struct list_elem * temp = list_next(e);
+      if (t->wait_time <= timer_ticks()) {   // this may cause problem since timer_ticks disables interrupt again
+         // put to ready list
+         thread_unblock(t);  // same worry
+         list_remove(e);
+      }
+      e = temp;
+   }
+}
+
