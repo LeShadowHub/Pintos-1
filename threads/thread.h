@@ -95,7 +95,7 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
     struct list_elem waitelem;          /* List element for wait_list */
-    int64_t wait_time;                  /* Time the thread needs to sleep utill */
+    int64_t wait_time;                  /* Time the thread needs to sleep for */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */

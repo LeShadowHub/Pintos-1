@@ -88,23 +88,28 @@ timer_elapsed (int64_t then)
   return timer_ticks () - then;
 }
 
-/* Sleeps for approximately TICKS timer ticks.  Interrupts must
-   be turned on.
+/*
+   Sleeps for approximately TICKS timer ticks.
+   Interrupts must be turned on.
    Puts the current thread to wait_list
 */
 void
 timer_sleep (int64_t ticks)
 {
-   ASSERT (intr_get_level () == INTR_ON);
-   struct thread * cur = thread_current();
-
-   // blocks the thread, add it to wait list and record the necessary status
-   // in timer interrupt, decide whether the sleep time has expired
-   enum intr_level old_level = intr_disable();
-   list_push_back(&wait_list, &cur->waitelem);
-   cur->wait_time = timer_ticks() + ticks;
-   thread_block();
-   intr_set_level (old_level);
+  // check if interrupt is on
+  ASSERT (intr_get_level () == INTR_ON);
+  struct thread * cur = thread_current();
+    
+  // disable interrupts and store the previous interrupt status
+  enum intr_level old_level = intr_disable();
+  // insert current thread to the end of wait list
+  list_push_back(&wait_list, &cur->waitelem);
+  //
+  cur->wait_time = timer_ticks() + ticks;
+  // put the current thread to sleep
+  thread_block();
+  // restore interrupt status
+  intr_set_level (old_level);
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -184,7 +189,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
   ticks++;
   // check wait_list
   update_wait_list();   // isn't this interrupt too long?
-  thread_tick ();
+  thread_tick();
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
@@ -259,19 +264,25 @@ real_time_delay (int64_t num, int32_t denom)
 }
 
 static void update_wait_list(void) {
-   ASSERT (intr_get_level () == INTR_OFF);
-   struct list_elem *e = list_begin(&wait_list);
-   struct thread *t;
-
-   while (e != list_tail(&wait_list)) {
-      t = list_entry(e, struct thread, waitelem);
-      struct list_elem * temp = list_next(e);
-      if (t->wait_time <= timer_ticks()) {   // this may cause problem since timer_ticks disables interrupt again
-         // put to ready list
-         thread_unblock(t);  // same worry
-         list_remove(e);
-      }
-      e = temp;
-   }
+  // check if interrupt is off
+  ASSERT (intr_get_level () == INTR_OFF);
+  // fetch the first element in the list
+  struct list_elem *e = list_begin(&wait_list);
+  struct thread *t;
+  // loop through all waiting threads to check wait time
+  while (e != list_tail(&wait_list)) {
+    // get a thread from the list
+    t = list_entry(e, struct thread, waitelem);
+    // store next element in a temp variable
+    struct list_elem *temp = list_next(e);
+    // if wait time is long enough, wake up the thread
+    if (t->wait_time <= timer_ticks()) {   // this may cause problem since timer_ticks disables interrupt again
+      // put to ready list
+      thread_unblock(t);  // same worry
+      list_remove(e);
+    }
+    // update current element
+    e = temp;
+  }
 }
 
