@@ -263,6 +263,7 @@ real_time_delay (int64_t num, int32_t denom)
   busy_wait (loops_per_tick * num / 1000 * TIMER_FREQ / (denom / 1000));
 }
 
+/* loop through all waiting threads and wake up ready threads */
 static void update_wait_list(void) {
   // check if interrupt is off
   ASSERT (intr_get_level () == INTR_OFF);
