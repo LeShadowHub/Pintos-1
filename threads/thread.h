@@ -96,6 +96,8 @@ struct thread
     struct list_elem elem;              /* List element. */
     struct list_elem waitelem;          /* List element for wait_list */
     int64_t wait_time;                  /* Time the thread needs to sleep for */
+    int nice;
+    int recent_cpu;
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -150,6 +152,7 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+void thread_calculate_load_avg(void);
 
 /* ADDED */
 struct thread * get_thread_by_tid(tid_t tid);

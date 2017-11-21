@@ -14,6 +14,19 @@
 #include "userprog/process.h"
 #include "vm/page.h"
 
+/* Fixed Point Real Arithmetic B.6 */
+#define FRAC (1 << 14)
+
+#define CONVERT_FP(x) (x) * (FRAC)
+#define CONVERT_INT_ZERO(x) (x) / (FRAC)
+#define CONVERT_INT_NEAR(x) ((x) >= 0 ? ((x) + (FRAC) / 2) / (FRAC) : ((x) - (FRAC) / 2) / (FRAC))
+
+#define ADD_INT(x, n) (x) + (n) / (FRAC)
+#define SUB_INT(x, n) (x) - (n) / (FRAC)
+
+#define MUL_FP(x, y) ((int64_t)(x)) * (y) / (FRAC)
+#define DIV_FP(x, y) ((int64_t)(x)) * (FRAC) / (y)
+
 
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
@@ -70,6 +83,7 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
+static int load_avg;
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -97,6 +111,7 @@ thread_init (void)
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
+  load_avg = 0;
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -249,6 +264,14 @@ thread_create (const char *name, int priority,
             palloc_free_page(t);
          }
       }
+
+  /*If running MLFQS, capture priority*/
+  if(thread_mlfqs)
+    t->priority = thread_get_priority ();
+  /* Delay thread if priority level is higher */
+  if (priority > thread_current ()->priority)
+    thread_yield(); 
+
   return tid;
 }
 
@@ -393,6 +416,9 @@ thread_set_priority (int new_priority)
 int
 thread_get_priority(void)
 {
+
+  if (thread_mlfqs)
+     return PRI_MAX - CONVERT_INT_NEAR(thread_get_recent_cpu () / 4) - (thread_get_nice () * 2);
   return thread_current ()->priority;
 }
 
@@ -415,24 +441,32 @@ thread_set_nice(int nice UNUSED)
 int
 thread_get_nice(void)
 {
-  /* Not yet implemented. */
-  return 0;
+
+  return thread_current ()->nice;
+}
+
+void
+ thread_calculate_load_avg (void)
+ {
+   int ready_threads;
+   (thread_current () != idle_thread) ? (ready_threads = list_size (&ready_list) + 1) : (ready_threads = 0);
+   load_avg = CONVERT_INT_NEAR (100 * (MUL_FP (CONVERT_FP (59) / 60, CONVERT_FP (load_avg) / 100) + CONVERT_FP (1) / 60 * ready_threads));
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg(void)
 {
-  /* Not yet implemented. */
-  return 0;
+  return load_avg;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu(void)
 {
-  /* Not yet implemented. */
-  return 0;
+  static int recent_cpu = 0;
+  int load = 2 * thread_get_load_avg () / 100;
+  return recent_cpu = 100 * CONVERT_INT_NEAR ((DIV_FP (load, load + 1) + CONVERT_FP (recent_cpu) / 100) * thread_get_nice ());
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.

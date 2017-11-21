@@ -2,7 +2,7 @@
 
 # Path to GDB macros file.  Customize for your site.
 ###--- Change the path to point to your gdb-macros file ---###
-GDBMACROS_DEFAULT=/your-pintos-directory/misc/gdb-macros
+GDBMACROS_DEFAULT=/home/matt/pintos/misc/gdb-macros
 
 if [ -z $GDBMACROS ]; then
   echo "!!! WARNING: GDBMACROS NOT SET. !!!"
@@ -11,7 +11,7 @@ fi
 
 GDBMACROS=${GDBMACROS:-$GDBMACROS_DEFAULT}
 
-#GDBMACROS=/home/aifusenno1/pintos/misc/gdb-macros}
+#GDBMACROS=/home/matt/pintos/misc/gdb-macros}
 
 # Choose correct GDB.
 if command -v i386-elf-gdb >/dev/null 2>&1; then

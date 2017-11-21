@@ -96,8 +96,10 @@ timer_elapsed (int64_t then)
 void
 timer_sleep (int64_t ticks)
 {
+
   // check if interrupt is on
   ASSERT (intr_get_level () == INTR_ON);
+
   struct thread * cur = thread_current();
     
   // disable interrupts and store the previous interrupt status
@@ -187,9 +189,12 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
-  // check wait_list
-  update_wait_list();   // isn't this interrupt too long?
   thread_tick();
+  /*Calculate load avg every second */
+  if (ticks % TIMER_FREQ == 0) 
+    thread_calculate_load_avg ();
+  // check wait_list
+  update_wait_list();
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
@@ -279,6 +284,7 @@ static void update_wait_list(void) {
     // if wait time is long enough, wake up the thread
     if (t->wait_time <= timer_ticks()) {   // this may cause problem since timer_ticks disables interrupt again
       // put to ready list
+      timer_ticks();
       thread_unblock(t);  // same worry
       list_remove(e);
     }

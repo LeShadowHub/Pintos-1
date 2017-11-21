@@ -228,6 +228,7 @@ lock_try_acquire (struct lock *lock)
 void
 lock_release (struct lock *lock)
 {
+
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
 
