@@ -17,6 +17,19 @@
 #error TIMER_FREQ <= 1000 recommended
 #endif
 
+/* Fixed Point Real Arithmetic B.6 */
+#define FRAC (1 << 14)
+
+#define CONVERT_FP(x) (x) * (FRAC)
+#define CONVERT_INT_ZERO(x) (x) / (FRAC)
+#define CONVERT_INT_NEAR(x) ((x) >= 0 ? ((x) + (FRAC) / 2) / (FRAC) : ((x) - (FRAC) / 2) / (FRAC))
+
+#define ADD_INT(x, n) (x) + (n) * (FRAC)
+#define SUB_INT(x, n) (x) - (n) * (FRAC)
+
+#define MUL_FP(x, y) ((int64_t)(x)) * (y) / (FRAC)
+#define DIV_FP(x, y) ((int64_t)(x)) * (FRAC) / (y)
+
 /* Number of timer ticks since OS booted. */
 static int64_t ticks;
 /* List of processes put to sleep by timer_sleep */
@@ -190,9 +203,18 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick();
-  /*Calculate load avg every second */
-  if (ticks % TIMER_FREQ == 0) 
+  if(thread_mlfqs){
+
+  thread_current ()->recent_cpu = ADD_INT(thread_current ()->recent_cpu, 1);
+  /*Calculate every second */
+  if (ticks % TIMER_FREQ == 0) {
     thread_calculate_load_avg ();
+    thread_calculate_all_recent_cpu();
+  }
+  if (ticks % 4 == 3) 
+    thread_calculate_all_priority ();
+
+  }
   // check wait_list
   update_wait_list();
 }

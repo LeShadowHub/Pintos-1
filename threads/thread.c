@@ -21,8 +21,8 @@
 #define CONVERT_INT_ZERO(x) (x) / (FRAC)
 #define CONVERT_INT_NEAR(x) ((x) >= 0 ? ((x) + (FRAC) / 2) / (FRAC) : ((x) - (FRAC) / 2) / (FRAC))
 
-#define ADD_INT(x, n) (x) + (n) / (FRAC)
-#define SUB_INT(x, n) (x) - (n) / (FRAC)
+#define ADD_INT(x, n) (x) + (n) * (FRAC)
+#define SUB_INT(x, n) (x) - (n) * (FRAC)
 
 #define MUL_FP(x, y) ((int64_t)(x)) * (y) / (FRAC)
 #define DIV_FP(x, y) ((int64_t)(x)) * (FRAC) / (y)
@@ -84,6 +84,8 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 static int load_avg;
+static void thread_calculate_priority_ (struct thread *);
+static void thread_calculate_recent_cpu_ (struct thread *);
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -267,7 +269,7 @@ thread_create (const char *name, int priority,
 
   /*If running MLFQS, capture priority*/
   if(thread_mlfqs)
-    t->priority = thread_get_priority ();
+    thread_calculate_priority_ (t);
   /* Delay thread if priority level is higher */
   if (priority > thread_current ()->priority)
     thread_yield(); 
@@ -416,9 +418,6 @@ thread_set_priority (int new_priority)
 int
 thread_get_priority(void)
 {
-
-  if (thread_mlfqs)
-     return PRI_MAX - CONVERT_INT_NEAR(thread_get_recent_cpu () / 4) - (thread_get_nice () * 2);
   return thread_current ()->priority;
 }
 
@@ -434,7 +433,11 @@ thread_donate_priority(struct thread *donor, struct thread *receiver)
 void
 thread_set_nice(int nice UNUSED)
 {
-  /* Not yet implemented. */
+  ASSERT (nice >= -20 && nice <= 20);
+   
+  thread_current ()->nice = nice;
+  thread_calculate_recent_cpu ();
+  thread_calculate_priority ();
 }
 
 /* Returns the current thread's nice value. */
@@ -445,30 +448,110 @@ thread_get_nice(void)
   return thread_current ()->nice;
 }
 
+/* Called every second to calculate load average */
 void
  thread_calculate_load_avg (void)
  {
    int ready_threads;
    (thread_current () != idle_thread) ? (ready_threads = list_size (&ready_list) + 1) : (ready_threads = 0);
-   load_avg = CONVERT_INT_NEAR (100 * (MUL_FP (CONVERT_FP (59) / 60, CONVERT_FP (load_avg) / 100) + CONVERT_FP (1) / 60 * ready_threads));
+   load_avg = MUL_FP (CONVERT_FP (59) / 60, load_avg) + CONVERT_FP (1) / 60 * ready_threads;
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg(void)
 {
-  return load_avg;
+  return CONVERT_INT_NEAR(100 * load_avg);
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu(void)
 {
-  static int recent_cpu = 0;
-  int load = 2 * thread_get_load_avg () / 100;
-  return recent_cpu = 100 * CONVERT_INT_NEAR ((DIV_FP (load, load + 1) + CONVERT_FP (recent_cpu) / 100) * thread_get_nice ());
+
+  return CONVERT_INT_NEAR(100*thread_current()->recent_cpu);
 }
 
+
+
+/* Base function */
+void
+thread_calculate_recent_cpu (void)
+{
+  thread_calculate_recent_cpu_ (thread_current ());
+}
+
+/* Pass by reference set recent cpu */
+static void
+thread_calculate_recent_cpu_ (struct thread *cur)
+{
+  ASSERT (is_thread (cur));
+  
+  if (cur == idle_thread)
+    return;
+    
+  /* Grab load value */
+  int load = load_avg * 2;
+  /* Write recent CPU */
+  cur->recent_cpu = ADD_INT (MUL_FP (DIV_FP (load, ADD_INT (load, 1)), cur->recent_cpu), cur->nice);
+}
+
+/* Calculate recent cpu for all threads */
+void
+thread_calculate_all_recent_cpu (void)
+{
+  struct list_elem *e;
+  struct thread *t;
+  /* Iterate through entries */
+  for (e = list_begin (&all_list); e != list_end (&all_list);
+       e = list_next (e))
+    {
+      t = list_entry (e, struct thread, allelem);
+      /* Set recent cpu for thread index */
+      thread_calculate_recent_cpu_ (t);
+    }
+}
+
+/* Base function */
+void
+thread_calculate_priority (void)
+{
+  thread_calculate_priority_ (thread_current ());
+}
+
+/* Pass by reference set priority */
+static void
+thread_calculate_priority_ (struct thread *cur)
+{
+  ASSERT (is_thread (cur));
+  
+  if (cur == idle_thread)
+    return;
+  
+  cur->priority = PRI_MAX - CONVERT_INT_NEAR (cur->recent_cpu / 4) - cur->nice * 2;
+
+  if (cur->priority > PRI_MAX)
+    cur->priority = PRI_MAX;
+  else if (cur->priority < PRI_MIN)
+    cur->priority = PRI_MIN;
+}
+
+/* Set priority for all threads */
+void
+thread_calculate_all_priority (void)
+{
+  struct list_elem *e;
+  struct thread *t;
+  for (e = list_begin (&all_list); e != list_end (&all_list);
+       e = list_next (e))
+    {
+      /* Set priority for thread index */
+      t = list_entry (e, struct thread, allelem);
+      thread_calculate_priority_ (t);
+    }
+    
+}
+
 /* Idle thread.  Executes when no other thread is ready to run.
 
    The idle thread is initially put on the ready list by
@@ -565,6 +648,15 @@ init_thread (struct thread *t, const char *name, int priority)
   old_level = intr_disable ();
   list_push_back(&all_list, &t->allelem);
   intr_set_level(old_level);
+
+  if (thread_mlfqs)
+  {
+    t->nice = 0;
+    if (t == initial_thread)
+      t->recent_cpu = 0;
+    else
+      t->recent_cpu = thread_get_recent_cpu ();
+  }
 
 
 }
