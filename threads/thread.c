@@ -796,4 +796,3 @@ struct thread * get_thread_by_tid(tid_t tid) {
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof(struct thread, stack);
-
