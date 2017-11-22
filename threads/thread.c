@@ -84,8 +84,11 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 static int load_avg;
-static void thread_calculate_priority_ (struct thread *);
-static void thread_calculate_recent_cpu_ (struct thread *);
+
+/* Calculate priority B.2 */
+static void thread_calculate_priority (struct thread *);
+/* Calculate recent cpu B.3 */
+static void thread_calculate_recent_cpu (struct thread *);
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -269,7 +272,7 @@ thread_create (const char *name, int priority,
 
   /*If running MLFQS, capture priority*/
   if(thread_mlfqs)
-    thread_calculate_priority_ (t);
+    thread_calculate_priority (t);
   /* Delay thread if priority level is higher */
   if (priority > thread_current ()->priority)
     thread_yield(); 
@@ -429,15 +432,31 @@ thread_donate_priority(struct thread *donor, struct thread *receiver)
   receiver->priority = donor->priority;
 }
 
+/* Compare priority levels */
+static bool
+list_elem_compare (const struct list_elem *elem1, const struct list_elem *elem2, void *aux UNUSED)
+{
+  ASSERT (elem1 != NULL && elem2 != NULL);
+
+  struct thread *t1, *t2;
+  t1 = list_entry (elem1, struct thread, elem);
+  t2 = list_entry (elem2, struct thread, elem);
+  
+  return (t1->priority > t2->priority);
+}
+
+
 /* Sets the current thread's nice value to NICE. */
 void
 thread_set_nice(int nice UNUSED)
 {
+  /* Check for boundaries B.1*/
   ASSERT (nice >= -20 && nice <= 20);
    
   thread_current ()->nice = nice;
-  thread_calculate_recent_cpu ();
-  thread_calculate_priority ();
+  thread_calculate_recent_cpu (thread_current());
+  thread_calculate_priority (thread_current());
+  list_sort (&ready_list, list_elem_compare, NULL);
 }
 
 /* Returns the current thread's nice value. */
@@ -473,27 +492,19 @@ thread_get_recent_cpu(void)
 }
 
 
-
-/* Base function */
-void
-thread_calculate_recent_cpu (void)
-{
-  thread_calculate_recent_cpu_ (thread_current ());
-}
-
 /* Pass by reference set recent cpu */
 static void
-thread_calculate_recent_cpu_ (struct thread *cur)
+thread_calculate_recent_cpu (struct thread *t)
 {
-  ASSERT (is_thread (cur));
+  ASSERT (is_thread (t));
   
-  if (cur == idle_thread)
+  if (t == idle_thread)
     return;
     
   /* Grab load value */
   int load = load_avg * 2;
   /* Write recent CPU */
-  cur->recent_cpu = ADD_INT (MUL_FP (DIV_FP (load, ADD_INT (load, 1)), cur->recent_cpu), cur->nice);
+  t->recent_cpu = ADD_INT (MUL_FP (DIV_FP (load, ADD_INT (load, 1)), t->recent_cpu), t->nice);
 }
 
 /* Calculate recent cpu for all threads */
@@ -508,32 +519,25 @@ thread_calculate_all_recent_cpu (void)
     {
       t = list_entry (e, struct thread, allelem);
       /* Set recent cpu for thread index */
-      thread_calculate_recent_cpu_ (t);
+      thread_calculate_recent_cpu (t);
     }
-}
-
-/* Base function */
-void
-thread_calculate_priority (void)
-{
-  thread_calculate_priority_ (thread_current ());
 }
 
 /* Pass by reference set priority */
 static void
-thread_calculate_priority_ (struct thread *cur)
+thread_calculate_priority (struct thread *t)
 {
-  ASSERT (is_thread (cur));
+  ASSERT (is_thread (t));
   
-  if (cur == idle_thread)
+  if (t == idle_thread)
     return;
   
-  cur->priority = PRI_MAX - CONVERT_INT_NEAR (cur->recent_cpu / 4) - cur->nice * 2;
+  t->priority = PRI_MAX - CONVERT_INT_NEAR (t->recent_cpu / 4) - t->nice * 2;
 
-  if (cur->priority > PRI_MAX)
-    cur->priority = PRI_MAX;
-  else if (cur->priority < PRI_MIN)
-    cur->priority = PRI_MIN;
+  if (t->priority > PRI_MAX)
+    t->priority = PRI_MAX;
+  else if (t->priority < PRI_MIN)
+    t->priority = PRI_MIN;
 }
 
 /* Set priority for all threads */
@@ -547,9 +551,9 @@ thread_calculate_all_priority (void)
     {
       /* Set priority for thread index */
       t = list_entry (e, struct thread, allelem);
-      thread_calculate_priority_ (t);
+      thread_calculate_priority (t);
     }
-    
+    list_sort (&ready_list, list_elem_compare, NULL);
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
