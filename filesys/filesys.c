@@ -94,6 +94,8 @@ filesys_remove (const char *name)
 bool
 filesys_chdir (const char *name)
 {
+   bool result;
+   return result;
 }
 
 
