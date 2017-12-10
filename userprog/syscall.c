@@ -44,11 +44,11 @@ static void sys_close(int fd);
 
 /* Added Syscalls for Subdirectories*/
 
-static bool chdir(const char*);
-static bool mkdir(const char*);
-static bool readdir(int, const char*);
-static bool isdir(int);
-static int inumber(int);
+static bool chdir(const char *file);
+static bool mkdir(const char *file);
+static bool readdir(int fd, const char *file);
+static bool isdir(int fd);
+static int inumber(int fd);
 
 /************************ Memory Access Functions ************************/
 static void user_mem_read(void* dest_addr, void* uaddr, size_t size);
