@@ -42,6 +42,14 @@ static void sys_seek(int fd, unsigned position);
 static unsigned sys_tell(int fd);
 static void sys_close(int fd);
 
+/* Added Syscalls for Subdirectories*/
+
+static bool chdir(const char*);
+static bool mkdir(const char*);
+static bool readdir(int, const char*);
+static bool isdir(int);
+static int inumber(int);
+
 /************************ Memory Access Functions ************************/
 static void user_mem_read(void* dest_addr, void* uaddr, size_t size);
 static int user_mem_read_byte(const uint8_t *uaddr);
@@ -218,18 +226,30 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
             break;
             /* Change the current directory. */
         case SYS_CHDIR:
+            const char* f;
+            user_mem_read(&f, f->esp + 4, sizeof (fd));
+            f->eax = chdir(f);
             break;
             /* Create a directory. */
         case SYS_MKDIR:
+            const char* f;
+            user_mem_read(&f, f->esp + 4, sizeof (fd));
+            f->eax = mkdir(f);
             break;
             /* Reads a directory entry. */
         case SYS_READDIR:
             break;
             /* Tests if a fd represents a directory. */
         case SYS_ISDIR:
+            int fd;
+            user_mem_read(&fd, f->esp + 4, sizeof (fd));
+            f->eax = isdir(fd);
             break;
             /* Returns the inode number for a fd. */
         case SYS_INUMBER:
+            int fd;
+            user_mem_read(&fd, f->esp + 4, sizeof (fd));
+            f->eax = inumber(fd);
             break;
     }
 
@@ -516,6 +536,53 @@ void sys_close(int fd) {
     palloc_free_page(fte);
 
     lock_release(&lock_filesys);
+}
+
+bool chdir(const char *file){
+    /* Check for invalid access*/
+    verify_string(file);
+    bool result;
+    lock_acquire(&lock_filesys);
+    result = filesys_chdir(file);
+    lock_release(&lock_filesys);
+    return result;
+    
+}
+
+bool mkdir(const char *file){
+    /* Check for invalid access*/
+    verify_string(file);
+    bool result;
+    lock_acquire(&lock_filesys);
+    result = filesys_create(file);
+    lock_release(&lock_filesys);
+    return result;
+    
+}
+
+bool readdir(int fd, const char *file){
+
+}
+
+bool isdir(int fd){
+    
+    bool result;
+    lock_acquire(&lock_filesys);
+    struct file_table_entry* fte = get_file_table_entry_by_fd(fd);
+    lock_release(&lock_filesys);
+    return result;
+    
+}
+
+int inumber(int fd){
+    /* Check for invalid access*/
+    verify_string(file);
+    bool result;
+    lock_acquire(&lock_filesys);
+    result = filesys_create(file);
+    lock_release(&lock_filesys);
+    return result;
+    
 }
 
 
