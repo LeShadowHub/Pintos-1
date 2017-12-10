@@ -561,7 +561,8 @@ bool mkdir(const char *file){
 }
 
 bool readdir(int fd, const char *file){
-
+    bool result;
+    return result;
 }
 
 bool isdir(int fd){
@@ -569,17 +570,18 @@ bool isdir(int fd){
     bool result;
     lock_acquire(&lock_filesys);
     struct file_table_entry* fte = get_file_table_entry_by_fd(fd);
+    //check for inode dir
     lock_release(&lock_filesys);
     return result;
     
 }
 
 int inumber(int fd){
-    /* Check for invalid access*/
-    verify_string(file);
-    bool result;
+
+    int result;
     lock_acquire(&lock_filesys);
-    result = filesys_create(file);
+    struct file_table_entry* fte = get_file_table_entry_by_fd(fd);
+    // get inode number
     lock_release(&lock_filesys);
     return result;
     
