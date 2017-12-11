@@ -648,7 +648,7 @@ static struct file_table_entry* get_file_table_entry_by_fd(int fd) {
    struct list *file_table = &cur->file_table;
    struct file_table_entry *fte;
    struct list_elem *e;
-   for (e = list_begin(file_table); e != list_end(file_table); e = list_next(file_table)) {
+   for (e = list_begin(file_table); e != list_end(file_table); e = list_next(e)) {
       fte = list_entry(e, struct file_table_entry, elem);
       if (fte->fd == fd) {
          return fte;
@@ -656,3 +656,4 @@ static struct file_table_entry* get_file_table_entry_by_fd(int fd) {
    }
    return NULL;
 }
+
