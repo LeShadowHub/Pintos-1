@@ -242,6 +242,14 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
 	}
             /* Reads a directory entry. */
         case SYS_READDIR:
+	{
+	    int fd;
+            char* name;
+            user_mem_read(&fd, f->esp + 4, sizeof (fd));
+	    user_mem_read(&name, f->esp + 8, sizeof (name));
+            f->eax = readdir(fd,name);
+            break;
+	}
             break;
             /* Tests if a fd represents a directory. */
         case SYS_ISDIR:
