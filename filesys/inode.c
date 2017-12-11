@@ -24,7 +24,6 @@ struct inode_disk
 
     off_t length;                       /* File size in bytes. include the last byte for EOF*/
     unsigned magic;                     /* Magic number. */
-    bool dir;				/* True if inode is a directory */
   };
 
   struct inode_indirect_pointer {
@@ -49,6 +48,7 @@ struct inode
     int deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
     struct inode_disk data;             /* Inode content. */
     struct lock lock_inode;
+    bool dir;				/* True if inode is a directory */
   };
 
 static bool inode_allocate(struct inode_disk *inoded, off_t length);
@@ -561,5 +561,5 @@ static void inode_deallocate(struct inode_disk *inoded) {
 }
 
 bool inode_get_dir(struct inode *inode){
-   return inode->data.dir;
+   return inode->dir;
 }
