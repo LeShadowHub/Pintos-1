@@ -98,6 +98,9 @@ thread_init (void)
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
+  #ifdef FILESYS
+  initial_thread->cwd = dir_open_root();
+  #endif
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -217,6 +220,10 @@ thread_create (const char *name, int priority,
   t->pcb->orphan = 0;
   t->pcb->executable = NULL;
   sema_init(&t->pcb->process_exec_sema, 0);  // Synchronize between process_execute and start_process
+  #endif
+
+  #ifdef FILESYS
+  t->cwd = dir_reopen(thread_current()->cwd); // directory points to the same inode as its parent's cwd
   #endif
 
   /* Stack frame for kernel_thread(). */
@@ -518,6 +525,7 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init(&t->child_list);
   list_init(&t->file_table);
   #endif
+
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);

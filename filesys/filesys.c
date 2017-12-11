@@ -43,7 +43,7 @@ filesys_done (void)
    Fails if a file named NAME already exists,
    or if internal memory allocation fails. */
 bool
-filesys_create (const char *name, off_t initial_size)
+filesys_create (const char *path, off_t initial_size)
 {
   block_sector_t inode_sector = 0;
   struct dir *dir = dir_open_root ();
@@ -110,3 +110,5 @@ do_format (void)
   free_map_close ();
   printf ("done.\n");
 }
+
+static
