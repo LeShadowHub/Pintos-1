@@ -10,7 +10,7 @@
 /* Identifies an inode. */
 #define INODE_MAGIC 0x494e4f44
 #define NUM_OF_DIRECT_POINTER 120
-#define NUM_OF_INDIRECT_POINTER 4
+#define NUM_OF_INDIRECT_POINTER 5
 #define INDIRECT_POINTERS_PRE_SECTOR BLOCK_SECTOR_SIZE / sizeof(block_sector_t)  // should be 128
 
 /* On-disk inode.
@@ -312,7 +312,7 @@ off_t inode_write_at (struct inode *inode, const void *buffer_, off_t size, off_
    {
       /* Sector to write, starting byte offset within sector. */
       block_sector_t sector_idx = byte_to_sector (inode, offset);
-
+      int sector_ofs = offset % BLOCK_SECTOR_SIZE;
       /* Bytes left in inode, bytes left in sector, lesser of the two. */
       off_t inode_left = inode_length (inode) - offset;
       int sector_left = BLOCK_SECTOR_SIZE - sector_ofs;  // this is never 0
@@ -332,8 +332,8 @@ off_t inode_write_at (struct inode *inode, const void *buffer_, off_t size, off_
          "sparse files." You may adopt either allocation strategy in your file system.
          We chose the former.
          */
-         if (inode_allocate(&inode.data, offset+size) {
-            inode.data->length = offset + size;
+         if (inode_allocate(&inode->data, offset+size)) {
+            inode->data.length = offset + size;
             continue; // recalculate sector_idx and chuck size
          }
          else break; // error associate with allocation
@@ -429,7 +429,7 @@ static bool inode_allocate(struct inode_disk *inoded, off_t length) {
       // if the indirect pointer is already allocated, still possibly the next-level direct pointers are not pointing to meaningful sector.
       // read the sector storing all next-level direct pointers into local indptr
       struct inode_indirect_pointer indptr;  // we implemented stack growth so hopefully this is fine
-      block_read (fs_device, inoded->indirect_pointer[i], &indptr)
+      block_read (fs_device, inoded->indirect_pointer[i], &indptr);
 
       n = num_of_sectors < INDIRECT_POINTERS_PRE_SECTOR ? num_of_sectors : INDIRECT_POINTERS_PRE_SECTOR;
       // then start assigning data sector to those direct pointers
@@ -507,7 +507,7 @@ static void inode_deallocate(struct inode_disk *inoded) {
    for (int i = 0; i < NUM_OF_INDIRECT_POINTER; i++) {
       free_map_release (inoded->indirect_pointer[i], 1); // shouldnt matter to do this first––not ereasing its content
       struct inode_indirect_pointer indptr;  // we implemented stack growth so hopefully this is fine
-      block_read (fs_device, inoded->indirect_pointer[i], &indptr)
+      block_read (fs_device, inoded->indirect_pointer[i], &indptr);
 
       n = num_of_sectors < INDIRECT_POINTERS_PRE_SECTOR ? num_of_sectors : INDIRECT_POINTERS_PRE_SECTOR;
       // then start assigning data sector to those direct pointers
@@ -536,3 +536,4 @@ static void inode_deallocate(struct inode_disk *inoded) {
 
    NOT_REACHED();
 }
+
