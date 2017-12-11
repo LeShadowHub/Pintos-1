@@ -38,6 +38,7 @@ struct file_table_entry {
    int fd;
    struct file* file;
    struct list_elem elem;
+   struct dir *dir;
 };
 
 

@@ -24,6 +24,7 @@ struct inode_disk
 
     off_t length;                       /* File size in bytes. include the last byte for EOF*/
     unsigned magic;                     /* Magic number. */
+    bool dir;				/* True if inode is a directory */
   };
 
   struct inode_indirect_pointer {
@@ -559,3 +560,6 @@ static void inode_deallocate(struct inode_disk *inoded) {
    NOT_REACHED();
 }
 
+bool inode_get_dir(struct inode *inode){
+   return inode->data.dir;
+}
