@@ -226,31 +226,39 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
             break;
             /* Change the current directory. */
         case SYS_CHDIR:
-            const char* f;
-            user_mem_read(&f, f->esp + 4, sizeof (fd));
-            f->eax = chdir(f);
+	{
+            const char* file;
+            user_mem_read(&file, f->esp + 4, sizeof (file));
+            f->eax = chdir(file);
             break;
+	}
             /* Create a directory. */
         case SYS_MKDIR:
-            const char* f;
-            user_mem_read(&f, f->esp + 4, sizeof (fd));
-            f->eax = mkdir(f);
+	{
+            const char* file;
+            user_mem_read(&file, f->esp + 4, sizeof (file));
+            f->eax = mkdir(file);
             break;
+	}
             /* Reads a directory entry. */
         case SYS_READDIR:
             break;
             /* Tests if a fd represents a directory. */
         case SYS_ISDIR:
+	{
             int fd;
             user_mem_read(&fd, f->esp + 4, sizeof (fd));
             f->eax = isdir(fd);
             break;
+	}
             /* Returns the inode number for a fd. */
         case SYS_INUMBER:
+	{
             int fd;
             user_mem_read(&fd, f->esp + 4, sizeof (fd));
             f->eax = inumber(fd);
             break;
+	}
     }
 
 }
@@ -554,7 +562,7 @@ bool mkdir(const char *file){
     verify_string(file);
     bool result;
     lock_acquire(&lock_filesys);
-    result = filesys_create(file);
+    result = filesys_create(file, 0);
     lock_release(&lock_filesys);
     return result;
     
