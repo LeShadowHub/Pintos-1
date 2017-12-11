@@ -244,10 +244,10 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
         case SYS_READDIR:
 	{
 	    int fd;
-            char* name;
+            char name[READDIR_MAX_LEN+1];
             user_mem_read(&fd, f->esp + 4, sizeof (fd));
-	    user_mem_read(&name, f->esp + 8, sizeof (name));
-            f->eax = readdir(fd,name);
+	         user_mem_read(&name, f->esp + 8, sizeof (name));
+            f->eax = sys_readdir(fd,name);
             break;
 	}
             break;
@@ -571,7 +571,7 @@ bool chdir(const char *file){
     result = filesys_chdir(file);
     lock_release(&lock_filesys);
     return result;
-    
+
 }
 
 bool mkdir(const char *file){
@@ -582,28 +582,34 @@ bool mkdir(const char *file){
     result = filesys_create(file, 0);
     lock_release(&lock_filesys);
     return result;
-    
+
 }
 
-bool readdir(int fd, const char *name){
+
+bool sys_readdir(int fd, const char *name){
     bool result;
     struct file_table_entry* fte = get_file_table_entry_by_fd(fd);
-    if(fte == NULL){
-	lock_release(&lock_filesys);
-	return false;
+
+    lock_acquire(&lock_filesys);
+    if(fte == NULL || fte->dir == NULL){  // must be a directory
+	     lock_release(&lock_filesys);
+        return false;
     }
+
+    // do we need this?
     struct inode *inode = file_get_inode (fte->file);
     if(inode == NULL){
-	lock_release(&lock_filesys);
-	return false;
+	     lock_release(&lock_filesys);
+	      return false;
     }
+
     result = dir_readdir(fte->dir, name);
     lock_release(&lock_filesys);
     return result;
 }
 
 bool isdir(int fd){
-    
+
     bool result;
     lock_acquire(&lock_filesys);
     struct file_table_entry* fte = get_file_table_entry_by_fd(fd);
@@ -612,7 +618,7 @@ bool isdir(int fd){
     result = inode_get_dir(inod);
     lock_release(&lock_filesys);
     return result;
-    
+
 }
 
 int inumber(int fd){
@@ -624,7 +630,7 @@ int inumber(int fd){
     result = (int)inode_get_inumber(file_get_inode (fte->file));
     lock_release(&lock_filesys);
     return result;
-    
+
 }
 
 
@@ -757,7 +763,7 @@ static struct file_table_entry* get_file_table_entry_by_fd(int fd) {
    struct list *file_table = &cur->file_table;
    struct file_table_entry *fte;
    struct list_elem *e;
-   for (e = list_begin(file_table); e != list_end(file_table); e = list_next(file_table)) {
+   for (e = list_begin(file_table); e != list_end(file_table); e = list_next(e)) {
       fte = list_entry(e, struct file_table_entry, elem);
       if (fte->fd == fd) {
          return fte;

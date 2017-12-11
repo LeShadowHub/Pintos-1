@@ -2,7 +2,7 @@
  * Modified by:
  * Matthew Tawil (mt33924)
  * Allen Pan (xp572)
- * Ze Lyu (zl5298) 
+ * Ze Lyu (zl5298)
  */
 
 #ifndef USERPROG_PROCESS_H
@@ -48,4 +48,3 @@ void process_exit (void);
 void process_activate (void);
 
 #endif /* userprog/process.h */
-
