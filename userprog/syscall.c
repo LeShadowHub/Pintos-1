@@ -244,10 +244,10 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
         case SYS_READDIR:
 	{
 	    int fd;
-            char* name;
+            char name[READDIR_MAX_LEN+1];
             user_mem_read(&fd, f->esp + 4, sizeof (fd));
-	    user_mem_read(&name, f->esp + 8, sizeof (name));
-            f->eax = readdir(fd,name);
+	         user_mem_read(&name, f->esp + 8, sizeof (name));
+            f->eax = sys_readdir(fd,name);
             break;
 	}
             break;
