@@ -568,8 +568,20 @@ bool mkdir(const char *file){
     
 }
 
-bool readdir(int fd, const char *file){
+bool readdir(int fd, const char *name){
     bool result;
+    struct file_table_entry* fte = get_file_table_entry_by_fd(fd);
+    if(fte == NULL){
+	lock_release(&lock_filesys);
+	return false;
+    }
+    struct inode *inode = file_get_inode (fte->file);
+    if(inode == NULL){
+	lock_release(&lock_filesys);
+	return false;
+    }
+    result = dir_readdir(fte->dir, name);
+    lock_release(&lock_filesys);
     return result;
 }
 
@@ -579,6 +591,8 @@ bool isdir(int fd){
     lock_acquire(&lock_filesys);
     struct file_table_entry* fte = get_file_table_entry_by_fd(fd);
     //check for inode dir
+    struct inode *inod = file_get_inode (fte->file);
+    result = inode_get_dir(inod);
     lock_release(&lock_filesys);
     return result;
     
@@ -590,6 +604,7 @@ int inumber(int fd){
     lock_acquire(&lock_filesys);
     struct file_table_entry* fte = get_file_table_entry_by_fd(fd);
     // get inode number
+    result = (int)inode_get_inumber(file_get_inode (fte->file));
     lock_release(&lock_filesys);
     return result;
     
