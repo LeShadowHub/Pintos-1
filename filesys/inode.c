@@ -6,6 +6,7 @@
 #include "filesys/filesys.h"
 #include "filesys/free-map.h"
 #include "threads/malloc.h"
+#include "threads/synch.h"
 
 /* Identifies an inode. */
 #define INODE_MAGIC 0x494e4f44
@@ -46,6 +47,7 @@ struct inode
     bool removed;                       /* True if deleted, false otherwise. */
     int deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
     struct inode_disk data;             /* Inode content. */
+    struct lock lock_inode;
   };
 
 static bool inode_allocate(struct inode_disk *inoded, off_t length);
@@ -62,12 +64,16 @@ static block_sector_t
 byte_to_sector (const struct inode *inode, off_t pos)
 {
   ASSERT (inode != NULL);
-
+  bool lock_held = lock_held_by_current_thread (&inode->lock_inode);
+  if (!lock_held) lock_acquire(&inode->lock_inode);
+  block_sector_t ret;
   if (pos < inode->data.length) { // < because last byte is terminator
-     return _byte_to_sector(&inode->data, pos/BLOCK_SECTOR_SIZE);
+     ret = _byte_to_sector(&inode->data, pos/BLOCK_SECTOR_SIZE);
  }
-  else
-    return -1;
+  else ret = -1;
+
+  if (!lock_held) lock_release(&inode->lock_inode);
+  return ret;
 }
 
 /**
@@ -186,6 +192,7 @@ inode_open (block_sector_t sector)
   inode->open_cnt = 1;
   inode->deny_write_cnt = 0;
   inode->removed = false;
+  lock_init (&inode->lock_inode);
   block_read (fs_device, inode->sector, &inode->data);
   return inode;
 }
@@ -194,9 +201,10 @@ inode_open (block_sector_t sector)
 struct inode *
 inode_reopen (struct inode *inode)
 {
-  if (inode != NULL)
-    inode->open_cnt++;
-  return inode;
+   lock_acquire (&inode->lock_inode);
+   if (inode != NULL)
+     inode->open_cnt++;
+   lock_release (&inode->lock_inode);
 }
 
 /* Returns INODE's inode number. */
@@ -214,8 +222,12 @@ void inode_close (struct inode *inode) {
    /* Ignore null pointer. */
    if (inode == NULL) return;
 
+   lock_acquire (&inode->lock_inode);
+   inode->open_cnt--;
+   lock_release (&inode->lock_inode);
+
    /* Release resources if this was the last opener. */
-   if (--inode->open_cnt == 0) {
+   if (inode->open_cnt == 0) {
       /* Remove from inode list and release lock. */
       list_remove (&inode->elem);
 
@@ -261,9 +273,8 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
 
       /* Number of bytes to actually copy out of this sector. */
       int chunk_size = size < min_left ? size : min_left;
-      if (chunk_size <= 0) { // 0 means min_left = inode_left = 0, meaning reaching end of file (size must > 0)
-        ASSERT (chunk_size == 0); // for fun. I think chucksize can't go lower than 0
-        break;
+      if (chunk_size <= 0) { // <=0 means min_left = inode_left <= 0, meaning reaching end of file (size must > 0)
+        break;               // can be < 0 if seek was called
      }
       if (sector_ofs == 0 && chunk_size == BLOCK_SECTOR_SIZE)
         {
@@ -320,9 +331,8 @@ off_t inode_write_at (struct inode *inode, const void *buffer_, off_t size, off_
 
       /* Number of bytes to actually copy out of this sector. */
       int chunk_size = size < min_left ? size : min_left;
-      if (chunk_size <= 0) {  //  0 means min_left = inode_left = 0, meaning reaching end of file
+      if (chunk_size <= 0) {  //  <=0 means min_left = inode_left <=0, meaning reaching end of file
          ASSERT(sector_idx == (block_sector_t)-1); // inside here means sector_idx == -1
-         ASSERT (chunk_size == 0); // for fun. I think chucksize can't go lower than 0
          /*
          Extend when reached EOF
          Writing far beyond EOF can cause many blocks to be entirely zero.
@@ -333,7 +343,13 @@ off_t inode_write_at (struct inode *inode, const void *buffer_, off_t size, off_
          We chose the former.
          */
          if (inode_allocate(&inode->data, offset+size)) {
+            bool lock_held = lock_held_by_current_thread (&inode->lock_inode);
+            if (!lock_held) lock_acquire(&inode->lock_inode);
             inode->data.length = offset + size;
+            if (!lock_held) lock_release(&inode->lock_inode);
+            block_write (fs_device, inode->sector, &inode->data);  // write the new inode information to sector
+            // notice here is the only place besides inode_create that calls allocate
+            // so only need to write inode_disk to sector here
             continue; // recalculate sector_idx and chuck size
          }
          else break; // error associate with allocation
@@ -379,8 +395,11 @@ off_t inode_write_at (struct inode *inode, const void *buffer_, off_t size, off_
 void
 inode_deny_write (struct inode *inode)
 {
+   lock_acquire (&inode->lock_inode);
   inode->deny_write_cnt++;
   ASSERT (inode->deny_write_cnt <= inode->open_cnt);
+  lock_release (&inode->lock_inode);
+
 }
 
 /* Re-enables writes to INODE.
@@ -391,7 +410,10 @@ inode_allow_write (struct inode *inode)
 {
   ASSERT (inode->deny_write_cnt > 0);
   ASSERT (inode->deny_write_cnt <= inode->open_cnt);
+  lock_acquire (&inode->lock_inode);
   inode->deny_write_cnt--;
+  lock_release (&inode->lock_inode);
+
 }
 
 /* Returns the length, in bytes, of INODE's data. */
