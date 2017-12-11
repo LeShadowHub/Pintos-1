@@ -58,6 +58,13 @@ filesys_create (const char *path, off_t initial_size)
   return success;
 }
 
+bool filesys_mkdir (const char *dir) {
+   char dirname[strlen(dir)];   // strlen(dir) will be th maximum needed
+   char filename[strlen(dir)];  // filename can be a directory's name
+   dir_extract_name(dir, dirname, filename);
+   
+}
+
 /* Opens the file with the given NAME.
    Returns the new file if successful or a null pointer
    otherwise.

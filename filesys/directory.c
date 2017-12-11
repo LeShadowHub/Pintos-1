@@ -57,6 +57,24 @@ dir_open_root (void)
   return dir_open (inode_open (ROOT_DIR_SECTOR));
 }
 
+/*
+   path can be absolute or relative
+   no trailing "/"
+*/
+struct dir * dir_open_path (const char *path_) {
+   char *path = strdup(path_);
+   struct dir * cur;   // the current directory. Will traverse from it
+   if (path[0] = '/') {
+      cur = dir_open_root();
+      path++;
+   } else {  // relative
+      cur = dir_reopen(thread_current()->cwd);
+   }
+   
+
+}
+
+
 /* Opens and returns a new directory for the same inode as DIR.
    Returns a null pointer on failure. */
 struct dir *
@@ -233,4 +251,30 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
         }
     }
   return false;
+}
+
+/*
+   filename: the file can still be a directory
+*/
+void dir_extract_name (char *path, char *dirname, char *filename) {
+    char * path_cp = strdup(path);
+    char *token, *last_token = NULL, *saveptr;
+    // check if absolute path
+    if (path[0] == '/') {
+        strcat(dirname,"/");
+        path_cp++;
+    }
+    token = strtok_r(path_cp, "/", &saveptr);
+    while (1) {
+        if (token == NULL) {
+            strcpy(filename, last_token);
+            break;
+        } else if (last_token != NULL) {
+            strcat(dirname, last_token);
+            strcat(dirname, "/");
+        }
+        last_token = token;
+        token = strtok_r(NULL, "/", &saveptr);
+    }
+    dirname[strlen(dirname)-1] = '\0';
 }
