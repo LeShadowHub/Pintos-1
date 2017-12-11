@@ -89,6 +89,15 @@ filesys_remove (const char *name)
 
   return success;
 }
+
+/* Change directory - NEED TO IMPLEMENT */
+bool
+filesys_chdir (const char *name)
+{
+   bool result;
+   return result;
+}
+
 
 /* Formats the file system. */
 static void

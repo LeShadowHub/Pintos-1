@@ -42,6 +42,14 @@ static void sys_seek(int fd, unsigned position);
 static unsigned sys_tell(int fd);
 static void sys_close(int fd);
 
+/* Added Syscalls for Subdirectories*/
+
+static bool chdir(const char *file);
+static bool mkdir(const char *file);
+static bool readdir(int fd, const char *file);
+static bool isdir(int fd);
+static int inumber(int fd);
+
 /************************ Memory Access Functions ************************/
 static void user_mem_read(void* dest_addr, void* uaddr, size_t size);
 static int user_mem_read_byte(const uint8_t *uaddr);
@@ -218,19 +226,39 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
             break;
             /* Change the current directory. */
         case SYS_CHDIR:
+	{
+            const char* file;
+            user_mem_read(&file, f->esp + 4, sizeof (file));
+            f->eax = chdir(file);
             break;
+	}
             /* Create a directory. */
         case SYS_MKDIR:
+	{
+            const char* file;
+            user_mem_read(&file, f->esp + 4, sizeof (file));
+            f->eax = mkdir(file);
             break;
+	}
             /* Reads a directory entry. */
         case SYS_READDIR:
             break;
             /* Tests if a fd represents a directory. */
         case SYS_ISDIR:
+	{
+            int fd;
+            user_mem_read(&fd, f->esp + 4, sizeof (fd));
+            f->eax = isdir(fd);
             break;
+	}
             /* Returns the inode number for a fd. */
         case SYS_INUMBER:
+	{
+            int fd;
+            user_mem_read(&fd, f->esp + 4, sizeof (fd));
+            f->eax = inumber(fd);
             break;
+	}
     }
 
 }
@@ -351,6 +379,7 @@ bool sys_remove(const char* file) {
  */
 int sys_open(const char* file) {
     verify_string(file);
+    struct file *open_file;
     struct file_table_entry *fte = palloc_get_page(0);
     if (!fte) return -1;  // memory allocation failed
 
@@ -361,6 +390,11 @@ int sys_open(const char* file) {
         palloc_free_page(fte);
         return -1;
     }
+    //store file
+    fte->file = open_file;
+    struct inode *inode = file_get_inode(open_file);
+    //implement open directories
+
     lock_release(&lock_filesys);
 
     return add_to_file_table(fte, f); // returns the fd
@@ -510,12 +544,79 @@ void sys_close(int fd) {
         lock_release(&lock_filesys);
         return;
     }
-
-    file_close(fte->file);
-    list_remove(&fte->elem);
-    palloc_free_page(fte);
+    if(fte->file != NULL){
+        file_close(fte->file);
+        if(fte->dir != NULL)
+	     dir_close(fte->dir);
+        list_remove(&fte->elem);
+        palloc_free_page(fte);
+    }
 
     lock_release(&lock_filesys);
+}
+
+bool chdir(const char *file){
+    /* Check for invalid access*/
+    verify_string(file);
+    bool result;
+    lock_acquire(&lock_filesys);
+    result = filesys_chdir(file);
+    lock_release(&lock_filesys);
+    return result;
+    
+}
+
+bool mkdir(const char *file){
+    /* Check for invalid access*/
+    verify_string(file);
+    bool result;
+    lock_acquire(&lock_filesys);
+    result = filesys_create(file, 0);
+    lock_release(&lock_filesys);
+    return result;
+    
+}
+
+bool readdir(int fd, const char *name){
+    bool result;
+    struct file_table_entry* fte = get_file_table_entry_by_fd(fd);
+    if(fte == NULL){
+	lock_release(&lock_filesys);
+	return false;
+    }
+    struct inode *inode = file_get_inode (fte->file);
+    if(inode == NULL){
+	lock_release(&lock_filesys);
+	return false;
+    }
+    result = dir_readdir(fte->dir, name);
+    lock_release(&lock_filesys);
+    return result;
+}
+
+bool isdir(int fd){
+    
+    bool result;
+    lock_acquire(&lock_filesys);
+    struct file_table_entry* fte = get_file_table_entry_by_fd(fd);
+    //check for inode dir
+    struct inode *inod = file_get_inode (fte->file);
+    result = inode_get_dir(inod);
+    lock_release(&lock_filesys);
+    return result;
+    
+}
+
+int inumber(int fd){
+
+    int result;
+    lock_acquire(&lock_filesys);
+    struct file_table_entry* fte = get_file_table_entry_by_fd(fd);
+    // get inode number
+    result = (int)inode_get_inumber(file_get_inode (fte->file));
+    lock_release(&lock_filesys);
+    return result;
+    
 }
 
 
