@@ -379,6 +379,7 @@ bool sys_remove(const char* file) {
  */
 int sys_open(const char* file) {
     verify_string(file);
+    struct file *open_file;
     struct file_table_entry *fte = palloc_get_page(0);
     if (!fte) return -1;  // memory allocation failed
 
@@ -389,6 +390,11 @@ int sys_open(const char* file) {
         palloc_free_page(fte);
         return -1;
     }
+    //store file
+    fte->file = open_file;
+    struct inode *inode = file_get_inode(open_file);
+    //implement open directories
+
     lock_release(&lock_filesys);
 
     return add_to_file_table(fte, f); // returns the fd
@@ -538,10 +544,13 @@ void sys_close(int fd) {
         lock_release(&lock_filesys);
         return;
     }
-
-    file_close(fte->file);
-    list_remove(&fte->elem);
-    palloc_free_page(fte);
+    if(fte->file != NULL){
+        file_close(fte->file);
+        if(fte->dir != NULL)
+	     dir_close(fte->dir);
+        list_remove(&fte->elem);
+        palloc_free_page(fte);
+    }
 
     lock_release(&lock_filesys);
 }
