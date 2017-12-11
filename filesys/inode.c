@@ -334,6 +334,8 @@ off_t inode_write_at (struct inode *inode, const void *buffer_, off_t size, off_
          */
          if (inode_allocate(&inode->data, offset+size)) {
             inode->data.length = offset + size;
+            block_write (fs_device, inode->sector, &inode->data);  // write the new inode information to sector
+
             continue; // recalculate sector_idx and chuck size
          }
          else break; // error associate with allocation
