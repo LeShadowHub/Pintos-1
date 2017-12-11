@@ -60,6 +60,7 @@ dir_open_root (void)
 /*
    path can be absolute or relative
    no trailing "/"
+   return NULL on error
 */
 struct dir * dir_open_path (const char *path_) {
    char *path = strdup(path_);
@@ -70,10 +71,29 @@ struct dir * dir_open_path (const char *path_) {
    } else {  // relative
       cur = dir_reopen(thread_current()->cwd);
    }
-   
-
+   char *token, *saveptr;
+   token = strtok_r(path, "/", &saveptr);
+   // traverse one at a time to get the wanted dir
+   while (token != NULL) {
+      struct inode *inode;
+      if(! dir_lookup(cur, token, &inode)) {
+         dir_close(cur);
+         return NULL; // such directory not exist
+      }
+      ASSERT(inode->dir);
+      struct dir *temp = dir_open(inode);
+      dir_close(cur);
+      if (temp == NULL) return NULL;  // dir_open failed
+      cur = temp;
+      token = strtok_r(NULL, "/", &saveptr);
+   }
+   // if the directory is already removed
+   if (inode_is_removed (cur->inode)) {
+      dir_close(cur);
+      return NULL;
+   }
+   return cur;
 }
-
 
 /* Opens and returns a new directory for the same inode as DIR.
    Returns a null pointer on failure. */
