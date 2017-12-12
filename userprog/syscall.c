@@ -575,12 +575,19 @@ bool chdir(const char *file){
 
 }
 
-bool mkdir(const char *file){
+/*
+Creates the directory named dir, which may be relative or absolute.
+Returns true if successful, false on failure. Fails if dir already
+exists or if any directory name in dir, besides the last, does not
+already exist. That is, mkdir("/a/b/c") succeeds only if /a/b already
+exists and /a/b/c does not.
+*/
+bool sys_mkdir(const char *dir){
     /* Check for invalid access*/
-    verify_string(file);
+    verify_string(dir);
     bool result;
     lock_acquire(&lock_filesys);
-    result = filesys_create(file, 0);
+    result = filesys_mkdir(dir);
     lock_release(&lock_filesys);
     return result;
 
