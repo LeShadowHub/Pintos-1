@@ -24,6 +24,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "filesys/filesys.h"
+//#include "lib/user/syscall.h"
 
 static void syscall_handler(struct intr_frame *);
 
@@ -44,11 +45,11 @@ static void sys_close(int fd);
 
 /* Added Syscalls for Subdirectories*/
 
-static bool chdir(const char *file);
-static bool mkdir(const char *file);
-static bool readdir(int fd, const char *file);
-static bool isdir(int fd);
-static int inumber(int fd);
+bool chdir(const char *file);
+bool mkdir(const char *file);
+bool readdir(int fd, const char *file);
+bool isdir(int fd);
+int inumber(int fd);
 
 /************************ Memory Access Functions ************************/
 static void user_mem_read(void* dest_addr, void* uaddr, size_t size);
@@ -244,10 +245,10 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
         case SYS_READDIR:
 	{
 	    int fd;
-            char name[READDIR_MAX_LEN+1];
+            const char file[15];
             user_mem_read(&fd, f->esp + 4, sizeof (fd));
-	         user_mem_read(&name, f->esp + 8, sizeof (name));
-            f->eax = sys_readdir(fd,name);
+	    user_mem_read(&file, f->esp + 8, sizeof (file));
+            f->eax = readdir(fd,file);
             break;
 	}
             break;
@@ -593,7 +594,7 @@ bool sys_mkdir(const char *dir){
 }
 
 
-bool sys_readdir(int fd, const char *name){
+bool readdir(int fd, const char *file){
     bool result;
     struct file_table_entry* fte = get_file_table_entry_by_fd(fd);
 
@@ -603,14 +604,7 @@ bool sys_readdir(int fd, const char *name){
         return false;
     }
 
-    // do we need this?
-    struct inode *inode = file_get_inode (fte->file);
-    if(inode == NULL){
-	     lock_release(&lock_filesys);
-	      return false;
-    }
-
-    result = dir_readdir(fte->dir, name);
+    result = dir_readdir(fte->dir, file);
     lock_release(&lock_filesys);
     return result;
 }

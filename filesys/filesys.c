@@ -126,5 +126,3 @@ do_format (void)
   free_map_close ();
   printf ("done.\n");
 }
-
-static
