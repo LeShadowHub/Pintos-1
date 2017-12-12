@@ -49,8 +49,8 @@ filesys_create (const char *path, off_t initial_size)
   struct dir *dir = dir_open_root ();
   bool success = (dir != NULL
                   && free_map_allocate (1, &inode_sector)
-                  && inode_create (inode_sector, initial_size)
-                  && dir_add (dir, name, inode_sector));
+                  && inode_create (inode_sector, initial_size, false)
+                  && dir_add (dir, path, inode_sector));
   if (!success && inode_sector != 0)
     free_map_release (inode_sector, 1);
   dir_close (dir);
@@ -58,11 +58,20 @@ filesys_create (const char *path, off_t initial_size)
   return success;
 }
 
-bool filesys_mkdir (const char *dir) {
-   char dirname[strlen(dir)];   // strlen(dir) will be th maximum needed
-   char filename[strlen(dir)];  // filename can be a directory's name
-   dir_extract_name(dir, dirname, filename);
-   
+bool filesys_mkdir (const char *path) {
+   char dirname[strlen(path)];   // strlen(dir) will be th maximum needed
+   char filename[strlen(path)];  // filename can be a directory's name
+   // dirname might be empty, but filename must not be empty
+   dir_extract_name(path, dirname, filename);
+   struct dir *dir = dir_open_path (dirname);
+   block_sector_t inode_sector = 0;
+   bool success = (dir != NULL
+                  && filename != NULL
+                  && free_map_allocate (1, &inode_sector)
+                  && dir_create(newdir_sector, dir))
+                  && dir_add(dir, filename, inode_sector));  // parent DIR will contain the child named FILENAME
+   if (!success && inode_sector != 0)
+      free_map_release(inode_sector, 1);
 }
 
 /* Opens the file with the given NAME.
@@ -112,7 +121,7 @@ do_format (void)
 {
   printf ("Formatting file system...");
   free_map_create ();
-  if (!dir_create (ROOT_DIR_SECTOR, 16))
+  if (!dir_create (ROOT_DIR_SECTOR, ROOT_DIR_SECTOR))  // not sure if this creates a loop
     PANIC ("root directory creation failed");
   free_map_close ();
   printf ("done.\n");

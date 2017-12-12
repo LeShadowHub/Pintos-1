@@ -11,7 +11,7 @@
 /* Identifies an inode. */
 #define INODE_MAGIC 0x494e4f44
 #define NUM_OF_DIRECT_POINTER 120
-#define NUM_OF_INDIRECT_POINTER 5
+#define NUM_OF_INDIRECT_POINTER 4
 #define INDIRECT_POINTERS_PRE_SECTOR BLOCK_SECTOR_SIZE / sizeof(block_sector_t)  // should be 128
 
 /* On-disk inode.
@@ -23,6 +23,7 @@ struct inode_disk
     block_sector_t double_indirect_pointer;
 
     off_t length;                       /* File size in bytes. include the last byte for EOF*/
+    bool is_dir;	             			/* True if inode is a directory */
     unsigned magic;                     /* Magic number. */
   };
 
@@ -48,7 +49,6 @@ struct inode
     int deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
     struct inode_disk data;             /* Inode content. */
     struct lock lock_inode;
-    bool dir;				/* True if inode is a directory */
   };
 
 static bool inode_allocate(struct inode_disk *inoded, off_t length);
@@ -137,7 +137,7 @@ device.
 Returns true if successful.
 Returns false if memory or disk allocation fails.
 */
-bool inode_create (block_sector_t sector, off_t length) {
+bool inode_create (block_sector_t sector, off_t length, bool is_dir) {
    struct inode_disk *disk_inode = NULL;
    bool success = false;
 
@@ -151,6 +151,7 @@ bool inode_create (block_sector_t sector, off_t length) {
    if (disk_inode != NULL) {
       disk_inode->length = length;
       disk_inode->magic = INODE_MAGIC;
+      disk_inode->is_dir = is_dir;
       if (inode_allocate(disk_inode, disk_inode->length)) {
          block_write (fs_device, sector, disk_inode);
          success = true;
