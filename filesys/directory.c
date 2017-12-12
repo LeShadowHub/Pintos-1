@@ -21,6 +21,8 @@ struct dir_entry
     bool in_use;                        /* In use or free? */
   };
 
+  static bool dir_is_empty(struct dir * dir);
+
 /* Creates a directory with space for ENTRY_CNT entries in the
    given SECTOR.  Returns true if successful, false on failure. */
 bool dir_create (block_sector_t new_sector, struct dir * parent) {
@@ -102,7 +104,7 @@ struct dir * dir_open_path (const char *path_) {
       token = strtok_r(NULL, "/", &saveptr);
    }
    // if the directory is already removed
-   if (inode_is_removed (cur->inode)) {
+   if (cur->inode->removed) {
       dir_close(cur);
       return NULL;
    }
@@ -253,6 +255,14 @@ dir_remove (struct dir *dir, const char *name)
   if (inode == NULL)
     goto done;
 
+   /* Prevent removing non-empty directory. */
+  if (inode_is_directory (inode)) {
+     struct dir *d = dir_open (inode);
+     bool ret = dir_is_empty(d);
+     dir_close (d);
+     if (!ret) goto done;
+   }
+
   /* Erase directory entry. */
   e.in_use = false;
   if (inode_write_at (dir->inode, &e, sizeof e, ofs) != sizeof e)
@@ -266,6 +276,7 @@ dir_remove (struct dir *dir, const char *name)
   inode_close (inode);
   return success;
 }
+
 
 /* Reads the next directory entry in DIR and stores the name in
    NAME.  Returns true if successful, false if the directory
@@ -285,6 +296,18 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
         }
     }
   return false;
+}
+
+static bool dir_is_empty(struct dir * dir) {
+   struct dir_entry e;
+   size_t ofs;
+
+   ASSERT (dir != NULL);
+
+   for (ofs = 0; inode_read_at (dir->inode, &e, sizeof e, ofs) == sizeof e; ofs += sizeof e)
+      if (e.in_use)
+         return false;
+   return true;
 }
 
 /*

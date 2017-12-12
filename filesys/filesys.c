@@ -53,7 +53,7 @@ bool filesys_create (const char *path, off_t initial_size) {
       && filename != NULL
       && free_map_allocate (1, &inode_sector)
       && inode_create (inode_sector, initial_size, false)
-      && dir_add (dir, path, inode_sector));
+      && dir_add (dir, filename, inode_sector));
    if (!success && inode_sector != 0)
       free_map_release (inode_sector, 1);
    if (dir != NULL) dir_close (dir);
@@ -103,21 +103,28 @@ filesys_open (const char *path)
   bool ret = dir_lookup (dir, filename, &inode);  // filename doesnt exist under directory DIR
   dir_close (dir);
   if (!ret) return NULL;
+
+  if (inode->remove) return NULL;  // might already be removed
   return file_open (inode);  // if inode is valid, open it
 }
 
 /* Deletes the file named NAME.
-   Returns true if successful, false on failure.
-   Fails if no file named NAME exists,
-   or if an internal memory allocation fails. */
-bool
-filesys_remove (const char *name)
-{
-  struct dir *dir = dir_open_root ();
-  bool success = dir != NULL && dir_remove (dir, name);
-  dir_close (dir);
+Returns true if successful, false on failure.
+Fails if no file named NAME exists,
+or if an internal memory allocation fails.
+*/
+bool filesys_remove (const char *path) {
+   char dirname[strlen(path)] = NULL;   // strlen(dir) will be th maximum needed
+   char filename[strlen(path)] = NULL;  // filename can be a directory's name
+   // dirname might be empty, but filename must not be empty
+   dir_extract_name(path, dirname, filename);
+   if (filename == NULL) return false;
 
-  return success;
+   struct dir *dir = dir_open_path (dirname);
+   bool success = dir != NULL && dir_remove (dir, filename);
+   dir_close (dir);
+
+   return success;
 }
 
 /* Change directory - NEED TO IMPLEMENT */
