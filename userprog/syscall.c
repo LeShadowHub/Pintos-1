@@ -720,16 +720,29 @@ static int add_to_file_table (struct file_table_entry *fte, struct file *f) {
 }
 
 /*Iterate through current file table to find the file_table_entry pointer*/
+
 static struct file_table_entry* get_file_table_entry_by_fd(int fd) {
-   struct thread *cur = thread_current();
-   struct list *file_table = &cur->file_table;
-   struct file_table_entry *fte;
-   struct list_elem *e;
-   for (e = list_begin(file_table); e != list_end(file_table); e = list_next(file_table)) {
-      fte = list_entry(e, struct file_table_entry, elem);
-      if (fte->fd == fd) {
-         return fte;
-      }
-   }
-   return NULL;
+
+   struct thread *cur = thread_current();
+
+   struct list *file_table = &cur->file_table;
+
+   struct file_table_entry *fte;
+
+   struct list_elem *e;
+
+   for (e = list_begin(file_table); e != list_end(file_table); e = list_next(e)) {
+
+      fte = list_entry(e, struct file_table_entry, elem);
+
+      if (fte->fd == fd) {
+
+         return fte;
+
+      }
+
+   }
+
+   return NULL;
+
 }
