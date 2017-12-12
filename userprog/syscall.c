@@ -566,15 +566,21 @@ void sys_close(int fd) {
 Changes the current working directory of the process to dir, which may be
 relative or absolute. Returns true if successful, false on failure.
 */
-bool sys_chdir(const char *file){
+bool sys_chdir(const char *dir){
     /* Check for invalid access*/
-    verify_string(file);
-    bool result;
+    verify_string(dir);
     lock_acquire(&lock_filesys);
-    result = filesys_chdir(file);
-    lock_release(&lock_filesys);
-    return result;
 
+    struct dir *dir = dir_open_path (path);
+    if(dir == NULL) {
+      lock_release(&lock_filesys);
+      return false;
+   }
+    dir_close(thread_current()->cwd);
+    thread_current()->cwd = dir;
+
+    lock_release(&lock_filesys);
+    return true;
 }
 
 /*
