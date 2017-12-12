@@ -68,7 +68,7 @@ bool filesys_mkdir (const char *path) {
    bool success = (dir != NULL
                   && filename != NULL
                   && free_map_allocate (1, &inode_sector)
-                  && dir_create(newdir_sector, dir))
+                  && dir_create(inode_sector, dir)
                   && dir_add(dir, filename, inode_sector));  // parent DIR will contain the child named FILENAME
    if (!success && inode_sector != 0)
       free_map_release(inode_sector, 1);
