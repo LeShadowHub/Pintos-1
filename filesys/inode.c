@@ -207,6 +207,7 @@ inode_reopen (struct inode *inode)
    if (inode != NULL)
      inode->open_cnt++;
    lock_release (&inode->lock_inode);
+   return inode;
 }
 
 /* Returns INODE's inode number. */

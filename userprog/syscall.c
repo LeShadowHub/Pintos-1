@@ -59,7 +59,7 @@ static void verify_string(const char *ptr);
 static void verify_dest(void *dest, unsigned size);
 /************************ File Table Helper Functions ************************/
 static struct file_table_entry* get_file_table_entry_by_fd(int fd);
-static int add_to_file_table (struct file_table_entry *fte, struct file *f);
+static int add_to_file_table (struct file_table_entry *fte);
 
 static struct lock lock_filesys;
 
@@ -384,27 +384,32 @@ bool sys_remove(const char* file) {
  *           or -1 if the file could not be opened.
  * Description: opens the file called file.
  */
-int sys_open(const char* file) {
+ int sys_open(const char* file) {
     verify_string(file);
-    struct file *open_file;
-    struct file_table_entry *fte = palloc_get_page(0);
+    struct file_table_entry *fte = palloc_get_page(0); // all 0 so member initialized to NULL
     if (!fte) return -1;  // memory allocation failed
 
     lock_acquire(&lock_filesys);
     struct file *f = filesys_open(file);
     if (f == NULL) {   // file not successfully opened
-        lock_release(&lock_filesys);
-        palloc_free_page(fte);
-        return -1;
-    }
-    //store file
-    fte->file = open_file;
-    struct inode *inode = file_get_inode(open_file);
-    //implement open directories
+      lock_release(&lock_filesys);
+      palloc_free_page(fte);
+      return -1;
+   }
 
-    lock_release(&lock_filesys);
+   // check whether the opened file is a directory
+   struct inode *inode = file_get_inode(f);  // in filesys_open, made sure inode exists
+   ASSERT(inode != NULL);
+   if (inode_is_directory(inode)) {
+      struct dir * dir = dir_open(inode_reopen(inode));
+      file_close(f); // not a regular file so destroy the structure and close inode; DO this after reopen to precent count reaching 0
+      fte->dir = dir;
+   }
+   else fte->file = f; // only one of these 2 can be non-NULL
 
-    return add_to_file_table(fte, f); // returns the fd
+   lock_release(&lock_filesys);
+
+   return add_to_file_table(fte); // returns the fd
 }
 
 /*
@@ -540,26 +545,27 @@ unsigned sys_tell(int fd) {
 }
 
 /*
- * void sys_close (int fd)
- *     - Parameters: file descriptor to be closed.
- * Description: closes file descriptor fd.
- */
+* void sys_close (int fd)
+*     - Parameters: file descriptor to be closed.
+* Description: closes file descriptor fd.
+**/
 void sys_close(int fd) {
-    lock_acquire(&lock_filesys);
-    struct file_table_entry* fte = get_file_table_entry_by_fd(fd);
-    if (fte == NULL) {
-        lock_release(&lock_filesys);
-        return;
-    }
-    if(fte->file != NULL){
-        file_close(fte->file);
-        if(fte->dir != NULL)
-	     dir_close(fte->dir);
-        list_remove(&fte->elem);
-        palloc_free_page(fte);
-    }
+   lock_acquire(&lock_filesys);
+   struct file_table_entry* fte = get_file_table_entry_by_fd(fd);
+   if (fte == NULL) {
+      lock_release(&lock_filesys);
+      return;
+   }
+   ASSERT (fte->file == NULL || fte->dir == NULL);
+   if (fte->dir == NULL) {  // regular file
+      file_close(fte->file);
+   } else { // directory
+      dir_close(fte->dir);
+   }
+   list_remove(&fte->elem);
+   palloc_free_page(fte);
 
-    lock_release(&lock_filesys);
+   lock_release(&lock_filesys);
 }
 
 /*
@@ -760,12 +766,13 @@ static bool user_mem_write_byte(uint8_t* dest_addr, uint8_t byte) {
 
 /*
    add the given file table entry to current thread's file table
+   This implementation means directories have fd as well
    return: fd of the entry
 */
-static int add_to_file_table (struct file_table_entry *fte, struct file *f) {
+static int add_to_file_table (struct file_table_entry *fte) {
    struct thread *cur = thread_current();
    struct list *file_table = &cur->file_table;
-   fte->file = f;
+
    if (list_empty(file_table)) fte->fd = 3;       // 0, 1, 2 reserved
    else {
       struct file_table_entry *back = list_entry(list_back(file_table), struct file_table_entry, elem); // the last opened file

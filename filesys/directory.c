@@ -33,6 +33,7 @@ bool dir_create (block_sector_t new_sector, struct dir * parent) {
    if (!ret) return ret;
 
    struct inode *inode = inode_open (new_sector);  // adding this directory to list of inode
+                                                   // opened but will be closed in dir_close
    struct dir * dir = dir_open (inode); //
    if (dir == NULL) return false;
 
@@ -81,7 +82,7 @@ struct dir * dir_open_path (const char *path_) {
    if (path[0] = '/') {
       cur = dir_open_root();
       path++;
-   } else {  // relative
+   } else {  // relative, empty path_ should return cwd
       cur = dir_reopen(thread_current()->cwd);
    }
    char *token, *saveptr;

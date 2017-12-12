@@ -44,8 +44,8 @@ filesys_done (void)
    or if internal memory allocation fails. */
 bool filesys_create (const char *path, off_t initial_size) {
    block_sector_t inode_sector = 0;
-   char dirname[strlen(path)];   // strlen(dir) will be th maximum needed
-   char filename[strlen(path)];  // filename can be a directory's name
+   char dirname[strlen(path)] = NULL;   // strlen(dir) will be th maximum needed
+   char filename[strlen(path)] = NULL;  // filename can be a directory's name
    dir_extract_name(path, dirname, filename);
    struct dir *dir = dir_open_path (dirname);
 
@@ -62,8 +62,8 @@ bool filesys_create (const char *path, off_t initial_size) {
 }
 
 bool filesys_mkdir (const char *path) {
-   char dirname[strlen(path)];   // strlen(dir) will be th maximum needed
-   char filename[strlen(path)];  // filename can be a directory's name
+   char dirname[strlen(path)] = NULL;   // strlen(dir) will be th maximum needed
+   char filename[strlen(path)] = NULL;  // filename can be a directory's name
    // dirname might be empty, but filename must not be empty
    dir_extract_name(path, dirname, filename);
    struct dir *dir = dir_open_path (dirname);
@@ -84,18 +84,26 @@ bool filesys_mkdir (const char *path) {
    Returns the new file if successful or a null pointer
    otherwise.
    Fails if no file named NAME exists,
-   or if an internal memory allocation fails. */
+   or if an internal memory allocation fails.
+   Return NULL on fail
+*/
 struct file *
-filesys_open (const char *name)
+filesys_open (const char *path)
 {
-  struct dir *dir = dir_open_root ();
+   char dirname[strlen(path)] = NULL;   // strlen(dir) will be th maximum needed
+   char filename[strlen(path)] = NULL;  // filename can be a directory's name
+   // dirname might be empty, but filename must not be empty
+   dir_extract_name(path, dirname, filename);
+   if (filename == NULL) return NULL;
+  struct dir *dir = dir_open_path (dirname);  // empty path should return cwd
   struct inode *inode = NULL;
 
-  if (dir != NULL)
-    dir_lookup (dir, name, &inode);
-  dir_close (dir);
+  if (dir == NULL) return NULL;  // path not exist
 
-  return file_open (inode);
+  bool ret = dir_lookup (dir, filename, &inode);  // filename doesnt exist under directory DIR
+  dir_close (dir);
+  if (!ret) return NULL;
+  return file_open (inode);  // if inode is valid, open it
 }
 
 /* Deletes the file named NAME.
