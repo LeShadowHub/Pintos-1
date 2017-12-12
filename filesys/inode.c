@@ -561,6 +561,6 @@ static void inode_deallocate(struct inode_disk *inoded) {
    NOT_REACHED();
 }
 
-bool inode_get_dir(struct inode *inode){
-   return inode->dir;
+bool inode_is_directory(struct inode *inode){
+   return inode->data.is_dir;
 }

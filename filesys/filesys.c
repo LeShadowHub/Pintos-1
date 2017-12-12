@@ -42,20 +42,23 @@ filesys_done (void)
    Returns true if successful, false otherwise.
    Fails if a file named NAME already exists,
    or if internal memory allocation fails. */
-bool
-filesys_create (const char *path, off_t initial_size)
-{
-  block_sector_t inode_sector = 0;
-  struct dir *dir = dir_open_root ();
-  bool success = (dir != NULL
-                  && free_map_allocate (1, &inode_sector)
-                  && inode_create (inode_sector, initial_size, false)
-                  && dir_add (dir, path, inode_sector));
-  if (!success && inode_sector != 0)
-    free_map_release (inode_sector, 1);
-  dir_close (dir);
+bool filesys_create (const char *path, off_t initial_size) {
+   block_sector_t inode_sector = 0;
+   char dirname[strlen(path)];   // strlen(dir) will be th maximum needed
+   char filename[strlen(path)];  // filename can be a directory's name
+   dir_extract_name(path, dirname, filename);
+   struct dir *dir = dir_open_path (dirname);
 
-  return success;
+   bool success = (dir != NULL
+      && filename != NULL
+      && free_map_allocate (1, &inode_sector)
+      && inode_create (inode_sector, initial_size, false)
+      && dir_add (dir, path, inode_sector));
+   if (!success && inode_sector != 0)
+      free_map_release (inode_sector, 1);
+   if (dir != NULL) dir_close (dir);
+
+   return success;
 }
 
 bool filesys_mkdir (const char *path) {
@@ -69,9 +72,11 @@ bool filesys_mkdir (const char *path) {
                   && filename != NULL
                   && free_map_allocate (1, &inode_sector)
                   && dir_create(newdir_sector, dir))
-                  && dir_add(dir, filename, inode_sector));  // parent DIR will contain the child named FILENAME
+                  && dir_add(dir, filename, inode_sector));  // filename must not be in dir already
    if (!success && inode_sector != 0)
       free_map_release(inode_sector, 1);
+   if (dir != NULL) dir_close (dir);
+   return success;
 }
 
 /* Opens the file with the given NAME.

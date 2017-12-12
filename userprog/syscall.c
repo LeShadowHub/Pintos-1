@@ -229,7 +229,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
 	{
             const char* file;
             user_mem_read(&file, f->esp + 4, sizeof (file));
-            f->eax = chdir(file);
+            f->eax = sys_chdir(file);
             break;
 	}
             /* Create a directory. */
@@ -237,7 +237,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
 	{
             const char* file;
             user_mem_read(&file, f->esp + 4, sizeof (file));
-            f->eax = mkdir(file);
+            f->eax = sys_mkdir(file);
             break;
 	}
             /* Reads a directory entry. */
@@ -256,7 +256,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
 	{
             int fd;
             user_mem_read(&fd, f->esp + 4, sizeof (fd));
-            f->eax = isdir(fd);
+            f->eax = sys_isdir(fd);
             break;
 	}
             /* Returns the inode number for a fd. */
@@ -264,7 +264,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
 	{
             int fd;
             user_mem_read(&fd, f->esp + 4, sizeof (fd));
-            f->eax = inumber(fd);
+            f->eax = sys_inumber(fd);
             break;
 	}
     }
@@ -563,7 +563,11 @@ void sys_close(int fd) {
     lock_release(&lock_filesys);
 }
 
-bool chdir(const char *file){
+/*
+Changes the current working directory of the process to dir, which may be
+relative or absolute. Returns true if successful, false on failure.
+*/
+bool sys_chdir(const char *file){
     /* Check for invalid access*/
     verify_string(file);
     bool result;
@@ -592,7 +596,14 @@ bool sys_mkdir(const char *dir){
 
 }
 
+/*
+Reads a directory entry from file descriptor fd, which must represent a directory. If successful, stores the null-terminated file name in name, which must have room for READDIR_MAX_LEN + 1 bytes, and returns true. If no entries are left in the directory, returns false.
+. and .. should not be returned by readdir.
 
+If the directory changes while it is open, then it is acceptable for some entries not to be read at all or to be read multiple times. Otherwise, each directory entry should be read once, in any order.
+
+READDIR_MAX_LEN is defined in lib/user/syscall.h. If your file system supports longer file names than the basic file system, you should increase this value from the default of 14.
+*/
 bool sys_readdir(int fd, const char *name){
     bool result;
     struct file_table_entry* fte = get_file_table_entry_by_fd(fd);
@@ -615,29 +626,31 @@ bool sys_readdir(int fd, const char *name){
     return result;
 }
 
-bool isdir(int fd){
-
+/* Returns true if fd represents a directory, false if it represents an ordinary file.
+*/
+bool sys_isdir(int fd){
     bool result;
     lock_acquire(&lock_filesys);
     struct file_table_entry* fte = get_file_table_entry_by_fd(fd);
     //check for inode dir
-    struct inode *inod = file_get_inode (fte->file);
-    result = inode_get_dir(inod);
+    struct inode *inode = file_get_inode (fte->file);
+    result = inode_is_directory(inode);
     lock_release(&lock_filesys);
     return result;
-
 }
 
-int inumber(int fd){
-
+/*
+Returns the inode number of the inode associated with fd, which may represent an ordinary file or a directory.
+An inode number persistently identifies a file or directory. It is unique during the file's existence. In Pintos, the sector number of the inode is suitable for use as an inode number.
+*/
+int sys_inumber(int fd){
     int result;
     lock_acquire(&lock_filesys);
     struct file_table_entry* fte = get_file_table_entry_by_fd(fd);
     // get inode number
-    result = (int)inode_get_inumber(file_get_inode (fte->file));
+    result = (int) inode_get_inumber(file_get_inode(fte->file));
     lock_release(&lock_filesys);
     return result;
-
 }
 
 
