@@ -55,7 +55,7 @@ static void user_mem_read(void* dest_addr, void* uaddr, size_t size);
 static int user_mem_read_byte(const uint8_t *uaddr);
 static bool user_mem_write_byte(uint8_t *dest, uint8_t byte);
 static void invalid_user_access(void);
-static void verify_string(const char *ptr);
+static void verify_string(const uint8_t *ptr);
 static void verify_dest(void *dest, unsigned size);
 /************************ File Table Helper Functions ************************/
 static struct file_table_entry* get_file_table_entry_by_fd(int fd);
@@ -218,17 +218,12 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
             sys_close(fd);
             break;
         }
-            /* Map a file into memory. */
-        case SYS_MMAP:
-            break;
-            /* Remove a memory mapping. */
-        case SYS_MUNMAP:
-            break;
+
         /* Change the current directory. */
         case SYS_CHDIR:
         {
            const char* dir;
-           user_mem_read(&file, f->esp + 4, sizeof (dir));
+           user_mem_read(&dir, f->esp + 4, sizeof (dir));
            f->eax = sys_chdir(dir);
            break;
         }
@@ -236,7 +231,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
         case SYS_MKDIR:
         {
            const char* dir;
-           user_mem_read(&file, f->esp + 4, sizeof (dir));
+           user_mem_read(&dir, f->esp + 4, sizeof (dir));
            f->eax = sys_mkdir(dir);
            break;
         }
@@ -247,7 +242,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
            const char name[READDIR_MAX_LEN+1];
            user_mem_read(&fd, f->esp + 4, sizeof (fd));
            user_mem_read(&name, f->esp + 8, sizeof (name));
-           f->eax = readdir(fd,name);
+           f->eax = sys_readdir(fd,name);
            break;
         }
         /* Tests if a fd represents a directory. */
@@ -373,7 +368,6 @@ bool sys_remove(const char* file) {
     bool result = filesys_remove(file);
     lock_release(&lock_filesys);
     return result;
-
 }
 
 /*
@@ -572,9 +566,9 @@ void sys_close(int fd) {
 Changes the current working directory of the process to dir, which may be
 relative or absolute. Returns true if successful, false on failure.
 */
-bool sys_chdir(const char *dir){
+bool sys_chdir(const char *path){
     /* Check for invalid access*/
-    verify_string(dir);
+    verify_string(path);
     lock_acquire(&lock_filesys);
 
     struct dir *dir = dir_open_path (path);
@@ -625,7 +619,7 @@ bool sys_readdir(int fd, const char *name){
         return false;
     }
 
-    result = dir_readdir(fte->dir, file);
+    result = dir_readdir(fte->dir, name);
     lock_release(&lock_filesys);
     return result;
 }
@@ -695,7 +689,7 @@ the other does not, so have to look for the null terminator
 check if the provided char pointer is a valid
 every char in string must be in user space, and must be in a page thats mapped
  */
-static void verify_string(const char *ptr) {
+static void verify_string(const uint8_t *ptr) {
     if (ptr == NULL || !is_user_vaddr(ptr)) invalid_user_access();
 
     while (true) {

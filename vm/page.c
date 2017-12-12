@@ -7,9 +7,12 @@
 #include <string.h>
 #include <debug.h>
 #include "threads/palloc.h"
+#include "threads/malloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "userprog/pagedir.h"
+#include "vm/frame.h"
+#include "vm/swap.h"
 
 
 static bool load_page_allzero (struct sup_page_table_entry * spte);
@@ -253,4 +256,3 @@ static void spt_destroy_func (struct hash_elem *spte_, void *aux UNUSED) {
 
    free(spte);
 }
-

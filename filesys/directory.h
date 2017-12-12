@@ -12,9 +12,9 @@
 #define NAME_MAX 14
 
 struct inode;
-
+struct dir;
 /* Opening and closing directories. */
-bool dir_create (block_sector_t sector, struct dir *);
+bool dir_create (block_sector_t, struct dir *);  // can't be the first function listed here. Should fix by declaring dtruct dir here
 struct dir *dir_open (struct inode *);
 struct dir *dir_open_root (void);
 struct dir * dir_open_path (const char *path);

@@ -6,6 +6,7 @@
 #include "devices/block.h"
 #include "threads/vaddr.h"
 #include "threads/synch.h"
+#include "threads/malloc.h"
 
 struct block *swap_slots;
 static struct bitmap *swap_table;
@@ -87,4 +88,3 @@ static void block_read_slot(struct block * block, size_t start_sector, void * bu
       block_read(block, start_sector + i, buffer + (i * BLOCK_SECTOR_SIZE));
    }
 }
-

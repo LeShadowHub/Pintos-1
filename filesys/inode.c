@@ -93,10 +93,12 @@ static block_sector_t _byte_to_sector(const struct inode_disk * inoded, off_t se
    for (int i=0; i<NUM_OF_INDIRECT_POINTER; i++) {
       sector_limit += INDIRECT_POINTERS_PRE_SECTOR * 1;  // each indirect pointer creates INDIRECT_POINTERS_PRE_SECTOR number of sectors available for file data
       if (sector_idx < sector_limit) {
-         struct inode_indirect_pointer indptr;
-         block_read (fs_device, inoded->indirect_pointer[i], &indptr);
+         struct inode_indirect_pointer *indptr = malloc(sizeof(struct inode_indirect_pointer));
+         block_read (fs_device, inoded->indirect_pointer[i], indptr);
          off_t indirect_offset = sector_idx - cur_base;  // the nth pointer in the region pointed by this indirect pointer
-         return indptr.sector_ptr[indirect_offset]; // returned is the sector num of the file data sector
+         block_sector_t ret = indptr->sector_ptr[indirect_offset]; // returned is the sector num of the file data sector
+         free(indptr);
+         return ret;
       }
       cur_base = sector_limit;
    }
@@ -104,12 +106,16 @@ static block_sector_t _byte_to_sector(const struct inode_disk * inoded, off_t se
    // now move on to double indirect pointer
    sector_limit += INDIRECT_POINTERS_PRE_SECTOR * 1 * INDIRECT_POINTERS_PRE_SECTOR * 1;
    if (sector_idx < sector_limit) {
-      struct inode_indirect_pointer level1ptr, level2ptr;
-      block_read (fs_device, inoded->double_indirect_pointer, &level1ptr);
+      struct inode_indirect_pointer *level1ptr = malloc(sizeof(struct inode_indirect_pointer));
+      struct inode_indirect_pointer *level2ptr = malloc(sizeof(struct inode_indirect_pointer));
+      block_read (fs_device, inoded->double_indirect_pointer, level1ptr);
       off_t first_level_off = (sector_idx - cur_base) / INDIRECT_POINTERS_PRE_SECTOR;
-      block_read (fs_device, level1ptr.sector_ptr[first_level_off], &level2ptr);
+      block_read (fs_device, level1ptr->sector_ptr[first_level_off], level2ptr);
       off_t second_level_off = (sector_idx - cur_base) % INDIRECT_POINTERS_PRE_SECTOR;
-      return level2ptr.sector_ptr[second_level_off];
+      block_sector_t ret = level2ptr->sector_ptr[second_level_off];
+      free(level1ptr);
+      free(level2ptr);
+      return ret;
    }
 
    NOT_REACHED ();
@@ -428,7 +434,6 @@ inode_length (const struct inode *inode)
 }
 
 
-
 static bool _inode_allocate(block_sector_t * ptr);
 /**
    length: the TOTAL length of the file
@@ -454,17 +459,20 @@ static bool inode_allocate(struct inode_disk *inoded, off_t length) {
          return false;
       // if the indirect pointer is already allocated, still possibly the next-level direct pointers are not pointing to meaningful sector.
       // read the sector storing all next-level direct pointers into local indptr
-      struct inode_indirect_pointer indptr;  // we implemented stack growth so hopefully this is fine
-      block_read (fs_device, inoded->indirect_pointer[i], &indptr);
+      struct inode_indirect_pointer *indptr = malloc(sizeof(struct inode_indirect_pointer));  // we implemented stack growth so hopefully this is fine
+      block_read (fs_device, inoded->indirect_pointer[i], indptr);
 
       n = num_of_sectors < INDIRECT_POINTERS_PRE_SECTOR ? num_of_sectors : INDIRECT_POINTERS_PRE_SECTOR;
       // then start assigning data sector to those direct pointers
       for (off_t j=0; j<n; j++) {
-         if (!_inode_allocate(&indptr.sector_ptr[j]))
+         if (!_inode_allocate(&indptr->sector_ptr[j])) {
+            free(indptr);
             return false;
+         }
       }
       // then write content in local indptr to filesys
-      block_write(fs_device, inoded->indirect_pointer[i], &indptr);
+      block_write(fs_device, inoded->indirect_pointer[i], indptr);
+      free(indptr);
       num_of_sectors -= n;
       if (num_of_sectors == 0) return true;  // done allocation
    }
@@ -474,27 +482,36 @@ static bool inode_allocate(struct inode_disk *inoded, off_t length) {
    // allocate the double indirect pointer if not allocated yet
    if (!_inode_allocate(&inoded->double_indirect_pointer))
       return false;
-   struct inode_indirect_pointer level1ptr, level2ptr;
-   block_read (fs_device, inoded->double_indirect_pointer, &level1ptr);
+   struct inode_indirect_pointer *level1ptr = malloc(sizeof(struct inode_indirect_pointer));
+   struct inode_indirect_pointer *level2ptr = malloc(sizeof(struct inode_indirect_pointer));
+   block_read (fs_device, inoded->double_indirect_pointer, level1ptr);
 
    // each element of level1ptr (sector pointer) still points to a sector full of pointers (may not yet be allocated)
    for (int i=0; i < INDIRECT_POINTERS_PRE_SECTOR; i++) {
-      if (!_inode_allocate(&level1ptr.sector_ptr[i]))
+      if (!_inode_allocate(&level1ptr->sector_ptr[i])) {
+         free(level1ptr);
+         free(level2ptr);
          return false;
-      block_read (fs_device, level1ptr.sector_ptr[i], &level2ptr);
+      }
+      block_read (fs_device, level1ptr->sector_ptr[i], level2ptr);
       // each element of level2ptr (sector ptr) points to a data sector
       // from now on see how many sectors we need for data (equivalent to how many level2ptr in this sector we need)
       n = num_of_sectors < INDIRECT_POINTERS_PRE_SECTOR ? num_of_sectors : INDIRECT_POINTERS_PRE_SECTOR;
       for (off_t j = 0; j < n; j++) {
-         if (!_inode_allocate(&level2ptr.sector_ptr[j]))
+         if (!_inode_allocate(&level2ptr->sector_ptr[j])) {
+            free(level1ptr);
+            free(level2ptr);
             return false;
+         }
       }
       // then write content in local level2ptr to filesys
-      block_write(fs_device, level1ptr.sector_ptr[i], &level2ptr);
+      block_write(fs_device, level1ptr->sector_ptr[i], level2ptr);
       num_of_sectors -= n;
       if (num_of_sectors == 0) {
          //  write content in local level1ptr to filesys (may be newly expanded sectors)
          block_write(fs_device, inoded->double_indirect_pointer, &level1ptr);
+         free(level1ptr);
+         free(level2ptr);
          return true;
       }
    }
@@ -565,4 +582,8 @@ static void inode_deallocate(struct inode_disk *inoded) {
 
 bool inode_is_directory(struct inode *inode){
    return inode->data.is_dir;
+}
+
+bool inode_is_removed(struct inode *inode) {
+   return inode->removed;
 }

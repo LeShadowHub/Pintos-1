@@ -6,6 +6,8 @@
 #include "filesys/free-map.h"
 #include "filesys/inode.h"
 #include "filesys/directory.h"
+#include "threads/malloc.h"
+#include "threads/thread.h"
 
 /* Partition that contains the file system. */
 struct block *fs_device;
@@ -28,6 +30,8 @@ filesys_init (bool format)
     do_format ();
 
   free_map_open ();
+
+  thread_current()->cwd = dir_open_root();
 }
 
 /* Shuts down the file system module, writing any unwritten data
@@ -44,8 +48,11 @@ filesys_done (void)
    or if internal memory allocation fails. */
 bool filesys_create (const char *path, off_t initial_size) {
    block_sector_t inode_sector = 0;
-   char dirname[strlen(path)] = NULL;   // strlen(dir) will be th maximum needed
-   char filename[strlen(path)] = NULL;  // filename can be a directory's name
+   char * dirname = malloc(strlen(path)+1);   // strlen(dir) will be th maximum needed
+   char * filename = malloc(strlen(path)+1);  // filename can be a directory's name
+   memset(dirname, 0, strlen(path)+1);
+   memset(filename, 0, strlen(path)+1);
+
    dir_extract_name(path, dirname, filename);
    struct dir *dir = dir_open_path (dirname);
 
@@ -54,24 +61,29 @@ bool filesys_create (const char *path, off_t initial_size) {
       && free_map_allocate (1, &inode_sector)
       && inode_create (inode_sector, initial_size, false)
       && dir_add (dir, filename, inode_sector));
+
    if (!success && inode_sector != 0)
       free_map_release (inode_sector, 1);
    if (dir != NULL) dir_close (dir);
+   if (dirname != NULL) free(dirname);
+   if (filename != NULL) free(filename);
 
    return success;
 }
 
 bool filesys_mkdir (const char *path) {
-   char dirname[strlen(path)] = NULL;   // strlen(dir) will be th maximum needed
-   char filename[strlen(path)] = NULL;  // filename can be a directory's name
+   char dirname[strlen(path)+1];   // strlen(dir) will be th maximum needed
+   char filename[strlen(path)+1];  // filename can be a directory's name
    // dirname might be empty, but filename must not be empty
+   memset(dirname, 0, sizeof dirname);
+   memset(filename, 0, sizeof filename);
    dir_extract_name(path, dirname, filename);
    struct dir *dir = dir_open_path (dirname);
    block_sector_t inode_sector = 0;
    bool success = (dir != NULL
                   && filename != NULL
                   && free_map_allocate (1, &inode_sector)
-                  && dir_create(newdir_sector, dir))
+                  && dir_create(inode_sector, dir)
                   && dir_add(dir, filename, inode_sector));  // filename must not be in dir already
    if (!success && inode_sector != 0)
       free_map_release(inode_sector, 1);
@@ -90,9 +102,12 @@ bool filesys_mkdir (const char *path) {
 struct file *
 filesys_open (const char *path)
 {
-   char dirname[strlen(path)] = NULL;   // strlen(dir) will be th maximum needed
-   char filename[strlen(path)] = NULL;  // filename can be a directory's name
+   char dirname[strlen(path)+1];   // strlen(dir) will be th maximum needed
+   char filename[strlen(path)+1];  // filename can be a directory's name
    // dirname might be empty, but filename must not be empty
+   memset(dirname, 0, sizeof dirname);
+   memset(filename, 0, sizeof filename);
+
    dir_extract_name(path, dirname, filename);
    if (filename == NULL) return NULL;
   struct dir *dir = dir_open_path (dirname);  // empty path should return cwd
@@ -104,7 +119,7 @@ filesys_open (const char *path)
   dir_close (dir);
   if (!ret) return NULL;
 
-  if (inode->remove) return NULL;  // might already be removed
+  if (inode_is_removed(inode)) return NULL;  // might already be removed
   return file_open (inode);  // if inode is valid, open it
 }
 
@@ -114,9 +129,11 @@ Fails if no file named NAME exists,
 or if an internal memory allocation fails.
 */
 bool filesys_remove (const char *path) {
-   char dirname[strlen(path)] = NULL;   // strlen(dir) will be th maximum needed
-   char filename[strlen(path)] = NULL;  // filename can be a directory's name
+   char dirname[strlen(path)+1];   // strlen(dir) will be th maximum needed
+   char filename[strlen(path)+1];  // filename can be a directory's name
    // dirname might be empty, but filename must not be empty
+   memset(dirname, 0, sizeof dirname);
+   memset(filename, 0, sizeof filename);
    dir_extract_name(path, dirname, filename);
    if (filename == NULL) return false;
 
@@ -127,14 +144,6 @@ bool filesys_remove (const char *path) {
    return success;
 }
 
-/* Change directory - NEED TO IMPLEMENT */
-bool
-filesys_chdir (const char *name)
-{
-   bool result;
-   return result;
-}
-
 
 /* Formats the file system. */
 static void
@@ -142,7 +151,7 @@ do_format (void)
 {
   printf ("Formatting file system...");
   free_map_create ();
-  if (!dir_create (ROOT_DIR_SECTOR, ROOT_DIR_SECTOR))  // not sure if this creates a loop
+  if (!dir_create (ROOT_DIR_SECTOR, NULL))
     PANIC ("root directory creation failed");
   free_map_close ();
   printf ("done.\n");

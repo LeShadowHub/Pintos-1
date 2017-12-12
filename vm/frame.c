@@ -8,8 +8,10 @@
 #include "userprog/process.h"
 #include "threads/thread.h"
 #include "threads/interrupt.h"
+#include "userprog/pagedir.h"
 #include "vm/swap.h"
 #include "vm/page.h"
+#include "threads/malloc.h"
 
 struct list frame_table;
 
@@ -142,8 +144,8 @@ static struct frame_table_entry * get_evict_FTE (void) {
    struct frame_table_entry *cur = list_entry (cur_e, struct frame_table_entry, elem);
    struct thread * t = thread_current();
 
-   while (pagedir_is_accessed(&t->pagedir, cur->page)) {
-      pagedir_set_accessed(&t->pagedir, cur->page, false);
+   while (pagedir_is_accessed(t->pagedir, cur->page)) {
+      pagedir_set_accessed(t->pagedir, cur->page, false);
       cur_e = list_next(cur_e);
       if (cur_e == list_end(&frame_table))  cur_e = list_begin(&frame_table);
       cur = list_entry (cur_e, struct frame_table_entry, elem);
@@ -152,4 +154,3 @@ static struct frame_table_entry * get_evict_FTE (void) {
    cur_e = list_next(cur_e);
    return cur;
 }
-

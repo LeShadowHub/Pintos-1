@@ -65,7 +65,7 @@ tid_t process_execute (const char *cmdline) {
      return TID_ERROR;
   }
   strlcpy (file_name, cmdline, PGSIZE);
-  // extract file name
+// extract file name
   char *saveptr;
   strtok_r(file_name, " ", &saveptr); // file_name will only contain the file name now
 
@@ -73,12 +73,16 @@ tid_t process_execute (const char *cmdline) {
 
   /* Create a new thread to execute the executable. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, cmdline_cp);
-  struct pcb_t *pcb;
+  struct pcb_t * pcb= NULL;
   if (tid == TID_ERROR) {
      palloc_free_page (cmdline_cp);
   }
   else {  // if child wasn't created, sema wouldn't have been inited
+
      struct thread *child = get_thread_by_tid(tid);  // get the newly created thread (this implementation is kinda bad)
+     #ifdef FILESYS
+     child->cwd = dir_reopen(cur->cwd); // directory points to the same inode as its parent's cwd
+     #endif
      list_push_back(&cur->child_list, &child->pcb->elem);  // add the new child to parent's child list
      pcb = child->pcb; // if child is killed, sema still needs access properly, so have a separate pointer for pcb is necessary
      sema_init(&pcb->process_wait_sema, 0);  // think should init here, cuz only necessary to wait when process_wait is called
@@ -107,7 +111,7 @@ static void start_process (void *command_) {
    if_.eflags = FLAG_IF | FLAG_MBS;
 
    // extract the filename
-   char **argv = (const char**) palloc_get_page(0); // allocate kernel space for temp usage, will later be freed
+   char **argv = (char**) palloc_get_page(0); // allocate kernel space for temp usage, will later be freed
    if (argv == NULL) {
       cur->pcb->exit_status = -1;  // kernel terminate the process, so exit code is -1
       printf("%s: exit(%d)\n", cur->name, cur->pcb->exit_status);
@@ -124,11 +128,6 @@ static void start_process (void *command_) {
       if (argv[argc-1] != NULL) argv[argc] = NULL;  // must terminate by NULL; this is needed for exec-arg test case
       success = load (argv, argc, &if_.eip, &if_.esp);
    }
-
-   // deny write to the current running executable
-   cur->pcb->executable = filesys_open(argv[0]);
-   if (cur->pcb->executable != NULL)
-      file_deny_write(cur->pcb->executable);
 
    sema_up(&cur->pcb->process_exec_sema);
 
@@ -362,7 +361,7 @@ load (const char **argv, int argc, void (**eip) (void), void **esp)
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL)
-    goto done;
+    goto fail;
   process_activate ();
 
   /* Open executable file. */
@@ -370,7 +369,7 @@ load (const char **argv, int argc, void (**eip) (void), void **esp)
   if (file == NULL)
     {
       printf ("load: %s: open failed\n", argv[0]);
-      goto done;
+      goto fail;
     }
 
   /* Read and verify executable header. */
@@ -383,7 +382,7 @@ load (const char **argv, int argc, void (**eip) (void), void **esp)
       || ehdr.e_phnum > 1024)
     {
       printf ("load: %s: error loading executable\n", argv[0]);
-      goto done;
+      goto fail;
     }
 
   /* Read program headers. */
@@ -393,11 +392,11 @@ load (const char **argv, int argc, void (**eip) (void), void **esp)
       struct Elf32_Phdr phdr;
 
       if (file_ofs < 0 || file_ofs > file_length (file))
-        goto done;
+        goto fail;
       file_seek (file, file_ofs);
 
       if (file_read (file, &phdr, sizeof phdr) != sizeof phdr)
-        goto done;
+        goto fail;
       file_ofs += sizeof phdr;
       switch (phdr.p_type)
         {
@@ -411,7 +410,7 @@ load (const char **argv, int argc, void (**eip) (void), void **esp)
         case PT_DYNAMIC:
         case PT_INTERP:
         case PT_SHLIB:
-          goto done;
+          goto fail;
         case PT_LOAD:
           if (validate_segment (&phdr, file))
             {
@@ -437,27 +436,30 @@ load (const char **argv, int argc, void (**eip) (void), void **esp)
                 }
               if (!load_segment (file, file_page, (void *) mem_page,
                                  read_bytes, zero_bytes, writable))
-                goto done;
+                goto fail;
             }
           else
-            goto done;
+            goto fail;
           break;
         }
     }
 
   /* Set up stack. */
   if (!setup_stack (esp, argv, argc))
-    goto done;
+    goto fail;
 
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
 
-  success = true;
+  // deny write to the current running executable
+  // not a good place to do this. But limited by our implementation
+  t->pcb->executable = file;
+  file_deny_write(t->pcb->executable);
+  return true;
 
- done:
-  /* We arrive here whether the load is successful or not. */
-  file_close (file);
-  return success;
+ fail:
+ file_close(file);
+ return false;
 }
 
 /* load() helpers. */
@@ -668,4 +670,3 @@ install_page (void *upage, void *frame, bool writable)
    }
    else return false;
 }
-
