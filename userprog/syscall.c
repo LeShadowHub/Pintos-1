@@ -24,7 +24,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "filesys/filesys.h"
-//#include "lib/user/syscall.h"
+#include "lib/user/syscall.h"
 
 static void syscall_handler(struct intr_frame *);
 
@@ -44,12 +44,11 @@ static unsigned sys_tell(int fd);
 static void sys_close(int fd);
 
 /* Added Syscalls for Subdirectories*/
-
-bool chdir(const char *file);
-bool mkdir(const char *file);
-bool readdir(int fd, const char *file);
-bool isdir(int fd);
-int inumber(int fd);
+static bool sys_chdir(const char *file);
+static bool sys_mkdir(const char *file);
+static bool sys_readdir(int fd, const char *file);
+static bool sys_isdir(int fd);
+static int sys_inumber(int fd);
 
 /************************ Memory Access Functions ************************/
 static void user_mem_read(void* dest_addr, void* uaddr, size_t size);
@@ -225,52 +224,51 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
             /* Remove a memory mapping. */
         case SYS_MUNMAP:
             break;
-            /* Change the current directory. */
+        /* Change the current directory. */
         case SYS_CHDIR:
-	{
-            const char* file;
-            user_mem_read(&file, f->esp + 4, sizeof (file));
-            f->eax = sys_chdir(file);
-            break;
-	}
-            /* Create a directory. */
+        {
+           const char* dir;
+           user_mem_read(&file, f->esp + 4, sizeof (dir));
+           f->eax = sys_chdir(dir);
+           break;
+        }
+        /* Create a directory. */
         case SYS_MKDIR:
-	{
-            const char* file;
-            user_mem_read(&file, f->esp + 4, sizeof (file));
-            f->eax = sys_mkdir(file);
-            break;
-	}
-            /* Reads a directory entry. */
+        {
+           const char* dir;
+           user_mem_read(&file, f->esp + 4, sizeof (dir));
+           f->eax = sys_mkdir(dir);
+           break;
+        }
+        /* Reads a directory entry. */
         case SYS_READDIR:
-	{
-	    int fd;
-            const char file[15];
-            user_mem_read(&fd, f->esp + 4, sizeof (fd));
-	    user_mem_read(&file, f->esp + 8, sizeof (file));
-            f->eax = readdir(fd,file);
-            break;
-	}
-            break;
-            /* Tests if a fd represents a directory. */
+        {
+           int fd;
+           const char name[READDIR_MAX_LEN+1];
+           user_mem_read(&fd, f->esp + 4, sizeof (fd));
+           user_mem_read(&name, f->esp + 8, sizeof (name));
+           f->eax = readdir(fd,name);
+           break;
+        }
+        /* Tests if a fd represents a directory. */
         case SYS_ISDIR:
-	{
-            int fd;
-            user_mem_read(&fd, f->esp + 4, sizeof (fd));
-            f->eax = sys_isdir(fd);
-            break;
-	}
-            /* Returns the inode number for a fd. */
+        {
+           int fd;
+           user_mem_read(&fd, f->esp + 4, sizeof (fd));
+           f->eax = sys_isdir(fd);
+           break;
+        }
+        /* Returns the inode number for a fd. */
         case SYS_INUMBER:
-	{
-            int fd;
-            user_mem_read(&fd, f->esp + 4, sizeof (fd));
-            f->eax = sys_inumber(fd);
-            break;
-	}
-    }
+        {
+           int fd;
+           user_mem_read(&fd, f->esp + 4, sizeof (fd));
+           f->eax = sys_inumber(fd);
+           break;
+        }
+     }
 
-}
+  }
 
 /************************ System Call Implementation ************************/
 
