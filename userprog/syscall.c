@@ -378,28 +378,30 @@ bool sys_remove(const char* file) {
  *           or -1 if the file could not be opened.
  * Description: opens the file called file.
  */
- int sys_open(const char* file) {
-    verify_string(file);
-    struct file_table_entry *fte = palloc_get_page(0); // all 0 so member initialized to NULL
+ int sys_open(const char* path) {
+    verify_string(path);
+    struct file_table_entry *fte = palloc_get_page(0);
     if (!fte) return -1;  // memory allocation failed
+    fte->file = NULL;
+    fte->dir = NULL;
 
     lock_acquire(&lock_filesys);
-    struct file *f = filesys_open(file);
-    if (f == NULL) {   // file not successfully opened
+    struct file *file = filesys_open(path);
+    if (file == NULL) {   // file not successfully opened
       lock_release(&lock_filesys);
       palloc_free_page(fte);
       return -1;
    }
 
    // check whether the opened file is a directory
-   struct inode *inode = file_get_inode(f);  // in filesys_open, made sure inode exists
+   struct inode *inode = file_get_inode(file);  // in filesys_open, made sure inode exists
    ASSERT(inode != NULL);
    if (inode_is_directory(inode)) {
       struct dir * dir = dir_open(inode_reopen(inode));
-      file_close(f); // not a regular file so destroy the structure and close inode; DO this after reopen to precent count reaching 0
+      file_close(file); // not a regular file so destroy the structure and close inode; DO this after reopen to precent count reaching 0
       fte->dir = dir;
    }
-   else fte->file = f; // only one of these 2 can be non-NULL
+   else fte->file = file; // only one of these 2 can be non-NULL
 
    lock_release(&lock_filesys);
 
@@ -489,6 +491,11 @@ int sys_write(int fd, const void* buffer, unsigned size) {
     else {  // write to a file
       struct file_table_entry *fte = get_file_table_entry_by_fd(fd);
       if (fte == NULL) {
+         lock_release(&lock_filesys);
+         return -1;  // fd is not in the current thread's file table
+      }
+      ASSERT (fte->file == NULL || fte->dir == NULL);
+      if (fte->file == NULL) {  // directory is not allowed to be written
          lock_release(&lock_filesys);
          return -1;  // fd is not in the current thread's file table
       }
@@ -790,3 +797,4 @@ static struct file_table_entry* get_file_table_entry_by_fd(int fd) {
    }
    return NULL;
 }
+

@@ -320,29 +320,38 @@ static bool dir_is_empty(struct dir * dir) {
 
 /*
 filename: the file can still be a directory
+not support multiple consecutive slashes
 */
-void dir_extract_name (char *path, char *dirname, char *filename) {
-   char *path_cp = malloc(strlen(path)+1);
-   strlcpy(path_cp, path, strlen(path)+1);
+void dir_extract_name (char *path_, char *dirname, char *filename) {
+   char *path = malloc(strlen(path_)+1);
+   strlcpy(path, path_, strlen(path_)+1);
+
+   if (path[strlen(path)-1] == '/') {
+      strlcpy(dirname, path, strlen(path_));  // this should exclude the / at the end
+      free(path);
+      return;
+   }
+
    char *token, *last_token = NULL, *saveptr;
    // check if absolute path
    if (path[0] == '/') {
       strlcat(dirname,"/", 2);
-      path_cp++;
+      path++;
    }
-   token = strtok_r(path_cp, "/", &saveptr);
+   token = strtok_r(path, "/", &saveptr);
    while (1) {
-      if (token == NULL) {
-         strlcpy(filename, last_token, strlen(path)+1);
+      if (token == NULL ) {
+         strlcpy(filename, last_token, strlen(path_)+1);
          break;
       } else if (last_token != NULL) {
-         strlcat(dirname, last_token, strlen(path)+1);
-         strlcat(dirname, "/", strlen(path)+1);
+         strlcat(dirname, last_token, strlen(path_)+1);
+         strlcat(dirname, "/", strlen(path_)+1);
       }
       last_token = token;
       token = strtok_r(NULL, "/", &saveptr);
    }
    if (strlen(dirname) != 0)
       dirname[strlen(dirname)-1] = '\0';
-   free(path_cp);
+   free(path);
 }
+
