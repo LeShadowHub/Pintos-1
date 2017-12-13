@@ -6,7 +6,7 @@ VM: excluding memory mapped files </br>
 Filesys: exlcuding buffer cache </br>
 
 
-This is the [User Programs][userprog] project in Pintos. To get started:
+
 
 1. Working on the Project on your Linux Machine:
   1. [**Clone**][ref-clone] the repository to your computer.
