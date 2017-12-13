@@ -1,9 +1,9 @@
 # Pintos
 
-Thread: a semi-working thread in the thread branch[branch-thread]. Not in master[branch-master]
+Threads[threads]: a semi-working thread in the thread branch[branch-thread]. Not in master[branch-master]
 Userprog[userprog]: complete
-VM: excluding memory mapped files
-Filesys: exlcuding buffer cache
+VM[vm]: excluding memory mapped files
+Filesys[filesys]: exlcuding buffer cache
 
 
 This is the [User Programs][userprog] project in Pintos. To get started:
