@@ -1,4 +1,10 @@
-# Project2 - Process API and SysCalls
+# Pintos
+
+Thread: a semi-working thread in the thread branch[branch-thread]. Not in master[branch-master]
+Userprog[userprog]: complete
+VM: excluding memory mapped files
+Filesys: exlcuding buffer cache
+
 
 This is the [User Programs][userprog] project in Pintos. To get started:
 
@@ -8,14 +14,6 @@ This is the [User Programs][userprog] project in Pintos. To get started:
   3. [**Push**][ref-push]/sync the changes up to your fork on GitHub.
 2. Submitting your Project:
   - [Create a **pull request**][pull-request] on the original repository to turn in the assignment.
-
-BETA Installation Script:
-
-Tested on Ubuntu 16.04. Supports bash only.
-
-Run the install script: `source install.sh`
-
-Manual installation steps will be posted soon.
 
 <!-- Links -->
 [userprog]: https://web.stanford.edu/class/cs140/projects/pintos/pintos_3.html#SEC32
