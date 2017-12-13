@@ -121,12 +121,13 @@ filesys_open (const char *path)
    if (strlen(filename) == 0) {
       // already know this is a dir, but need to generate a dummy file. Will be resolved in sys_open
       inode = dir_get_inode (dir);
+      // since the directory is what we want, do not close it.
    } else {
       success = dir_lookup (dir, filename, &inode);  // filename doesnt exist under directory DIR
       // the closing of this inode will be taken care by file_open and file_close
+      dir_close (dir);  // close the directory
    }
 
-  dir_close (dir);
   if (!success) return NULL;
 
   if (inode_is_removed(inode)) return NULL;  // might already be removed
@@ -146,7 +147,7 @@ bool filesys_remove (const char *path) {
    memset(dirname, 0, sizeof dirname);
    memset(filename, 0, sizeof filename);
    dir_extract_name(path, dirname, filename);
-   if (strlen(filename) == 0) return false;
+   // if (strlen(filename) == 0) return false;
 
    struct dir *dir = dir_open_path (dirname);
    bool success = dir != NULL && dir_remove (dir, filename);

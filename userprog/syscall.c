@@ -636,12 +636,11 @@ bool sys_readdir(int fd, const char *name){
 */
 bool sys_isdir(int fd){
     bool result;
-    lock_acquire(&lock_filesys);
     struct file_table_entry* fte = get_file_table_entry_by_fd(fd);
     //check for inode dir
-    struct inode *inode = file_get_inode (fte->file);
-    result = inode_is_directory(inode);
-    lock_release(&lock_filesys);
+    ASSERT (fte->file == NULL || fte->dir == NULL);
+    return fte->file == NULL;
+
     return result;
 }
 
