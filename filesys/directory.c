@@ -81,16 +81,16 @@ dir_open_root (void)
 struct dir * dir_open_path (const char *path_) {
    char *path = malloc(strlen(path_)+1);
    strlcpy(path, path_, strlen(path_)+1);
-
+   char *ptr = path;
    struct dir * cur;   // the current directory. Will traverse from it
-   if (path[0] == '/') {
+   if (ptr[0] == '/') {
       cur = dir_open_root();
-      path++;
+      ptr++;
    } else {  // relative, empty path_ should return cwd
       cur = dir_reopen(thread_current()->cwd);
    }
    char *token, *saveptr;
-   token = strtok_r(path, "/", &saveptr);
+   token = strtok_r(ptr, "/", &saveptr);
    // traverse one at a time to get the wanted dir
    while (token != NULL) {
       struct inode *inode;
@@ -100,7 +100,8 @@ struct dir * dir_open_path (const char *path_) {
          return NULL; // such directory not exist
       }
       ASSERT(inode_is_directory(inode));
-      struct dir *temp = dir_open(inode);
+      struct dir *temp = dir_open(inode); // dir_open wouldn't again open the inode
+      // inode_close(inode);
       dir_close(cur);
       if (temp == NULL)  {
          free(path);
@@ -265,7 +266,8 @@ dir_remove (struct dir *dir, const char *name)
 
    /* Prevent removing non-empty directory. */
   if (inode_is_directory (inode)) {
-     struct dir *d = dir_open (inode);
+     // have to open a new inode, otherwise the current one will be closed, because dir_open doesn't call inode_open
+     struct dir *d = dir_open (inode_open(e.inode_sector));
      bool ret = dir_is_empty(d);
      dir_close (d);
      if (!ret) goto done;
@@ -293,11 +295,12 @@ bool
 dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
 {
   struct dir_entry e;
+//  if (dir_is_empty(dir)) return false;
 
   while (inode_read_at (dir->inode, &e, sizeof e, dir->pos) == sizeof e)
     {
       dir->pos += sizeof e;
-      if (e.in_use)
+      if (strcmp(e.name, ".") && strcmp(e.name, "..") && e.in_use)
         {
           strlcpy (name, e.name, NAME_MAX + 1);
           return true;
@@ -309,13 +312,12 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
 static bool dir_is_empty(struct dir * dir) {
    struct dir_entry e;
    size_t ofs;
-
+   int count = 0;
    ASSERT (dir != NULL);
-
    for (ofs = 0; inode_read_at (dir->inode, &e, sizeof e, ofs) == sizeof e; ofs += sizeof e)
       if (e.in_use)
-         return false;
-   return true;
+      count++;
+   return count == 2;
 }
 
 /*
@@ -323,35 +325,35 @@ filename: the file can still be a directory
 not support multiple consecutive slashes
 */
 void dir_extract_name (char *path_, char *dirname, char *filename) {
-   char *path = malloc(strlen(path_)+1);
-   strlcpy(path, path_, strlen(path_)+1);
+    char *path = malloc(strlen(path_)+1);
+    strlcpy(path, path_, strlen(path_)+1);
+    char *ptr = path;
+    if (path[strlen(path)-1] == '/') {
+        strlcpy(dirname, path, strlen(path_)+1);  // this should exclude the / at the end
+        free(path);
+        return;
+    }
 
-   if (path[strlen(path)-1] == '/') {
-      strlcpy(dirname, path, strlen(path_));  // this should exclude the / at the end
-      free(path);
-      return;
-   }
-
-   char *token, *last_token = NULL, *saveptr;
-   // check if absolute path
-   if (path[0] == '/') {
-      strlcat(dirname,"/", 2);
-      path++;
-   }
-   token = strtok_r(path, "/", &saveptr);
-   while (1) {
-      if (token == NULL ) {
-         strlcpy(filename, last_token, strlen(path_)+1);
-         break;
-      } else if (last_token != NULL) {
-         strlcat(dirname, last_token, strlen(path_)+1);
-         strlcat(dirname, "/", strlen(path_)+1);
-      }
-      last_token = token;
-      token = strtok_r(NULL, "/", &saveptr);
-   }
-   if (strlen(dirname) != 0)
-      dirname[strlen(dirname)-1] = '\0';
-   free(path);
+    char *token, *last_token = NULL, *saveptr;
+    // check if absolute path
+    if (ptr[0] == '/') {
+        strlcat(dirname,"/", strlen(path_)+1);
+        ptr++;
+    }
+    token = strtok_r(ptr, "/", &saveptr);
+    while (1) {
+        if (token == NULL) {
+            strlcpy(filename, last_token,strlen(path_)+1);
+            break;
+        } else if (last_token != NULL) {
+            strlcat(dirname, last_token, strlen(path_)+1);
+            strlcat(dirname, "/", strlen(path_)+1);
+        }
+        last_token = token;
+        token = strtok_r(NULL, "/", &saveptr);
+    }
+    if (strlen(dirname) != 0 && strlen(dirname) != 1)  // not empty nor "/"
+        dirname[strlen(dirname)-1] = '\0';
+    free(path);
 }
 

@@ -123,6 +123,7 @@ filesys_open (const char *path)
       inode = dir_get_inode (dir);
    } else {
       success = dir_lookup (dir, filename, &inode);  // filename doesnt exist under directory DIR
+      // the closing of this inode will be taken care by file_open and file_close
    }
 
   dir_close (dir);

@@ -205,7 +205,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
 
             int fd;
             user_mem_read(&fd, f->esp + 4, sizeof (fd));
-            sys_tell(fd);
+            f->eax = sys_tell(fd);
             break;
         }
 
@@ -239,7 +239,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
         case SYS_READDIR:
         {
            int fd;
-           const char name[READDIR_MAX_LEN+1];
+           char *name;
            user_mem_read(&fd, f->esp + 4, sizeof (fd));
            user_mem_read(&name, f->esp + 8, sizeof (name));
            f->eax = sys_readdir(fd,name);
@@ -627,6 +627,7 @@ bool sys_readdir(int fd, const char *name){
     }
 
     result = dir_readdir(fte->dir, name);
+
     lock_release(&lock_filesys);
     return result;
 }
@@ -648,12 +649,14 @@ bool sys_isdir(int fd){
 Returns the inode number of the inode associated with fd, which may represent an ordinary file or a directory.
 An inode number persistently identifies a file or directory. It is unique during the file's existence. In Pintos, the sector number of the inode is suitable for use as an inode number.
 */
-int sys_inumber(int fd){
+int sys_inumber(int fd) {
     int result;
     lock_acquire(&lock_filesys);
     struct file_table_entry* fte = get_file_table_entry_by_fd(fd);
     // get inode number
-    result = (int) inode_get_inumber(file_get_inode(fte->file));
+    if (fte->file != NULL) result = (int) inode_get_inumber(file_get_inode(fte->file));
+    else if (fte->dir != NULL) result = (int) inode_get_inumber(dir_get_inode(fte->dir));
+
     lock_release(&lock_filesys);
     return result;
 }
