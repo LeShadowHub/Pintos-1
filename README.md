@@ -2,7 +2,7 @@
 
 Threads: a semi-working thread in the thread branch. Not in master </br>
 Userprog: complete </br>
-VM: excluding memory mapped files </br>
+VM: excluding memory mapped files (vm-merge-stk not passed. Will fix)</br>
 Filesys: exlcuding buffer cache </br>
 
 
