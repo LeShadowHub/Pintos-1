@@ -1,1 +1,1 @@
-# Semi-working threads
+Semi-working version of threads project
